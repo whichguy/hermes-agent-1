@@ -406,6 +406,27 @@ class TestItalicNewlineBug:
         result = adapter.format_message(text)
         assert "_italic_" in result
 
+    def test_task_list_checkboxes_convert_to_unicode_boxes(self, adapter):
+        """GitHub-style task lists should render cleanly in Telegram."""
+        text = "- [ ] Reschedule appointment\n- [x] Book flight\n* [X] Pack bag"
+        result = adapter.format_message(text)
+        assert "☐ Reschedule appointment" in result
+        assert "☑ Book flight" in result
+        assert "☑ Pack bag" in result
+        assert "\\[" not in result
+        assert "\\]" not in result
+
+    def test_task_list_checkbox_content_escaped(self, adapter):
+        """Task checkbox content still needs MarkdownV2 escaping."""
+        result = adapter.format_message("- [ ] Version v2.0!")
+        assert "☐ Version v2\\.0\\!" in result
+
+    def test_task_list_inside_code_not_converted(self, adapter):
+        """Checklist-looking text in code blocks must stay literal."""
+        result = adapter.format_message("```\n- [ ] literal\n```")
+        assert "- [ ] literal" in result
+        assert "☐ literal" not in result
+
 
 # =========================================================================
 # format_message - strikethrough
