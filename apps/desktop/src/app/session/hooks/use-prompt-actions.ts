@@ -154,6 +154,13 @@ async function withSessionBusyRetry<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+// Hard guard: at most one prompt.submit in flight per session. Every submit
+// path — user Enter, queue drain, busy-retry, slash fallthrough — funnels
+// through submitPromptText. Without this, a stalled turn (e.g. a context-bloated
+// session whose first call hangs) let the SAME prompt launch several real turns
+// at once (the "message stacked 5×" bug). Keyed by stored/active session id.
+const _submitInFlight = new Set<string>()
+
 function base64FromDataUrl(dataUrl: string): string {
   const comma = dataUrl.indexOf(',')
 
@@ -611,6 +618,23 @@ export function usePromptActions({
         return false
       }
 
+      // One submit in flight per session — drop any concurrent re-fire so a
+      // stalled turn can't stack the same prompt into multiple real turns.
+      const submitLockKey = selectedStoredSessionIdRef.current || activeSessionId || '__pending_new__'
+
+      if (_submitInFlight.has(submitLockKey)) {
+        return false
+      }
+
+      _submitInFlight.add(submitLockKey)
+      let submitLockReleased = false
+      const releaseSubmitLock = () => {
+        if (!submitLockReleased) {
+          submitLockReleased = true
+          _submitInFlight.delete(submitLockKey)
+        }
+      }
+
       const optimisticId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
       const buildUserMessage = (): ChatMessage => ({
@@ -621,6 +645,7 @@ export function usePromptActions({
       })
 
       const releaseBusy = () => {
+        releaseSubmitLock()
         setMutableRef(busyRef, false)
         setBusy(false)
         setAwaitingResponse(false)
@@ -761,6 +786,10 @@ export function usePromptActions({
         if (usingComposerAttachments) {
           clearComposerAttachments()
         }
+
+        // Submit landed — the turn now runs (busy stays true), but the submit
+        // window is closed, so release the lock for the next (sequential) send.
+        releaseSubmitLock()
 
         return true
       } catch (err) {
