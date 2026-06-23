@@ -1,0 +1,61 @@
+# ============================================================
+# FAIL-CLOSED .gitignore for a Hermes HERMES_HOME repo.
+# Ignore EVERYTHING at root, then allow-list only safe paths.
+# Adapt the allow-list to your actual layout.
+# ============================================================
+/*
+
+# --- Allow-listed (safe to version in a PRIVATE repo) ---
+!/.gitignore
+!/README.md
+!/config.yaml
+!/SOUL.md
+!/docker-compose.yml
+!/slack-manifest.json
+!/skills/
+!/wiki/
+!/scripts/
+!/cron/
+!/memories/
+!/agent-hooks/
+!/plans/
+!/start-hermes-watchtower.sh
+!/shell-hooks-allowlist.json
+!/.install_method
+
+# --- Re-exclude sensitive / churn INSIDE allow-listed dirs ---
+skills/.curator_backups/
+skills/.archive/
+skills/.usage.json
+skills/.usage.json.lock
+skills/.hub/
+skills/**/__pycache__/
+
+cron/*.bak*
+cron/output/
+cron/state/
+cron/**/__pycache__/
+
+memories/*.bak*
+memories/*.lock
+
+wiki/**/*.lock
+
+scripts/**/__pycache__/
+scripts/**/*.pyc
+
+# --- Customization dirs that are ONLY runtime state/logs ---
+plugins/
+disk-cleanup/
+hooks/
+
+# --- Credentials (NEVER commit) ---
+google/
+
+# ============================================================
+# Also excluded by the fail-closed /* rule (listed for intent):
+#   .env .env.*  auth.json auth.lock  google_*.json
+#   channel_directory.json  whatsapp/ pairing/
+#   state.db*  kanban.db*  sessions/ logs/
+#   *cache* .cache cache/  hermes-agent/  personal-context/
+# ============================================================
