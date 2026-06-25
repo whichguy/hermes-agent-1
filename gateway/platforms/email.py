@@ -27,7 +27,6 @@ import ssl
 import uuid
 from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.utils import formatdate
 from email import encoders
@@ -43,6 +42,7 @@ from gateway.platforms.base import (
     cache_image_from_bytes,
 )
 from gateway.config import Platform, PlatformConfig
+from gateway.email_formatting import make_alternative_email_part
 
 logger = logging.getLogger(__name__)
 # Automated sender patterns — emails from these are silently ignored
@@ -637,15 +637,17 @@ class EmailAdapter(BasePlatformAdapter):
         msg["From"] = self._address
         msg["To"] = to_addr
 
-        # Thread context for reply
+        # Thread context for reply. First-time messages should be standalone
+        # Gmail messages; only add Re:/thread headers when we have a source
+        # message ID from an inbound email or explicit reply target.
         ctx = self._thread_context.get(to_addr, {})
         subject = ctx.get("subject", "Hermes Agent")
-        if not subject.startswith("Re:"):
+        original_msg_id = reply_to_msg_id or ctx.get("message_id")
+        if original_msg_id and not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
 
         # Threading headers
-        original_msg_id = reply_to_msg_id or ctx.get("message_id")
         if original_msg_id:
             msg["In-Reply-To"] = original_msg_id
             msg["References"] = original_msg_id
@@ -654,7 +656,7 @@ class EmailAdapter(BasePlatformAdapter):
         msg_id = f"<hermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
         msg["Message-ID"] = msg_id
 
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(make_alternative_email_part(body, title=subject))
 
         smtp = self._connect_smtp()
         try:
@@ -754,11 +756,11 @@ class EmailAdapter(BasePlatformAdapter):
 
         ctx = self._thread_context.get(to_addr, {})
         subject = ctx.get("subject", "Hermes Agent")
-        if not subject.startswith("Re:"):
+        original_msg_id = ctx.get("message_id")
+        if original_msg_id and not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
 
-        original_msg_id = ctx.get("message_id")
         if original_msg_id:
             msg["In-Reply-To"] = original_msg_id
             msg["References"] = original_msg_id
@@ -768,7 +770,7 @@ class EmailAdapter(BasePlatformAdapter):
         msg["Message-ID"] = msg_id
 
         if body:
-            msg.attach(MIMEText(body, "plain", "utf-8"))
+            msg.attach(make_alternative_email_part(body, title=subject))
 
         for file_path in file_paths:
             p = Path(file_path)
@@ -834,11 +836,11 @@ class EmailAdapter(BasePlatformAdapter):
 
         ctx = self._thread_context.get(to_addr, {})
         subject = ctx.get("subject", "Hermes Agent")
-        if not subject.startswith("Re:"):
+        original_msg_id = ctx.get("message_id")
+        if original_msg_id and not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
 
-        original_msg_id = ctx.get("message_id")
         if original_msg_id:
             msg["In-Reply-To"] = original_msg_id
             msg["References"] = original_msg_id
@@ -848,7 +850,7 @@ class EmailAdapter(BasePlatformAdapter):
         msg["Message-ID"] = msg_id
 
         if body:
-            msg.attach(MIMEText(body, "plain", "utf-8"))
+            msg.attach(make_alternative_email_part(body, title=subject))
 
         # Attach file
         p = Path(file_path)

@@ -635,6 +635,52 @@ class TestThreadContext(unittest.TestCase):
             self.assertEqual(send_call["References"], "<original@test.com>")
             self.assertIn("Date", send_call)
 
+    def test_reply_sends_polished_html_with_plain_text_fallback_and_thread_headers(self):
+        """Threaded Gmail replies should be multipart/alternative HTML plus plain text."""
+        adapter = self._make_adapter()
+        adapter._thread_context["user@test.com"] = {
+            "subject": "Project question",
+            "message_id": "<original@test.com>",
+        }
+
+        with patch("smtplib.SMTP") as mock_smtp:
+            mock_server = MagicMock()
+            mock_smtp.return_value = mock_server
+
+            adapter._send_email("user@test.com", "**Answer**\n\n- First item", None)
+
+            send_call = mock_server.send_message.call_args[0][0]
+            self.assertEqual(send_call["Subject"], "Re: Project question")
+            self.assertEqual(send_call["In-Reply-To"], "<original@test.com>")
+            self.assertEqual(send_call["References"], "<original@test.com>")
+            self.assertTrue(send_call.is_multipart())
+
+            alternatives = [part for part in send_call.walk() if part.get_content_type() in {"text/plain", "text/html"}]
+            self.assertEqual([part.get_content_type() for part in alternatives], ["text/plain", "text/html"])
+            plain = alternatives[0].get_payload(decode=True).decode(alternatives[0].get_content_charset())
+            html = alternatives[1].get_payload(decode=True).decode(alternatives[1].get_content_charset())
+            self.assertIn("**Answer**", plain)
+            self.assertIn("font-family", html)
+            self.assertIn("<strong>Answer</strong>", html)
+            self.assertIn("First item</li>", html)
+
+    def test_first_time_email_uses_html_without_thread_headers(self):
+        """First-time emails should get polished HTML but no reply threading headers."""
+        adapter = self._make_adapter()
+
+        with patch("smtplib.SMTP") as mock_smtp:
+            mock_server = MagicMock()
+            mock_smtp.return_value = mock_server
+
+            adapter._send_email("newuser@test.com", "Hello from Hermes", None)
+
+            send_call = mock_server.send_message.call_args[0][0]
+            self.assertEqual(send_call["Subject"], "Hermes Agent")
+            self.assertNotIn("In-Reply-To", send_call)
+            self.assertNotIn("References", send_call)
+            self.assertTrue(send_call.is_multipart())
+            self.assertTrue(any(part.get_content_type() == "text/html" for part in send_call.walk()))
+
     def test_reply_does_not_double_re(self):
         """If subject already has Re:, don't add another."""
         adapter = self._make_adapter()
@@ -654,7 +700,7 @@ class TestThreadContext(unittest.TestCase):
             self.assertFalse(send_call["Subject"].startswith("Re: Re:"))
 
     def test_no_thread_context_uses_default_subject(self):
-        """Without thread context, subject should be 'Re: Hermes Agent'."""
+        """Without thread context, first-time email should use standalone subject."""
         adapter = self._make_adapter()
 
         with patch("smtplib.SMTP") as mock_smtp:
@@ -664,7 +710,9 @@ class TestThreadContext(unittest.TestCase):
             adapter._send_email("newuser@test.com", "Hello!", None)
 
             send_call = mock_server.send_message.call_args[0][0]
-            self.assertEqual(send_call["Subject"], "Re: Hermes Agent")
+            self.assertEqual(send_call["Subject"], "Hermes Agent")
+            self.assertNotIn("In-Reply-To", send_call)
+            self.assertNotIn("References", send_call)
             self.assertIn("Date", send_call)
 
 
