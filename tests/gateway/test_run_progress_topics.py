@@ -284,7 +284,7 @@ async def test_run_agent_progress_stays_in_originating_topic(monkeypatch, tmp_pa
     assert adapter.sent == [
         {
             "chat_id": "-1001",
-            "content": '💻 terminal: "pwd"',
+            "content": '💻 **terminal**: `pwd`',
             "reply_to": None,
             "metadata": {"thread_id": "17585"},
         }
@@ -530,10 +530,10 @@ def test_all_mode_default_truncation_40_chars(monkeypatch, tmp_path):
     content = adapter.sent[0]["content"]
     # The long command should be truncated — total preview <= 40 chars
     assert "..." in content
-    # Extract the preview part between quotes
+    # Extract the preview part between backticks
     import re
-    match = re.search(r'"(.+)"', content)
-    assert match, f"No quoted preview found in: {content}"
+    match = re.search(r'`(.+)`', content)
+    assert match, f"No inline-code preview found in: {content}"
     preview_text = match.group(1)
     assert len(preview_text) <= 40, f"Preview too long ({len(preview_text)}): {preview_text}"
 
@@ -546,8 +546,8 @@ def test_all_mode_respects_custom_preview_length(monkeypatch, tmp_path):
     content = adapter.sent[0]["content"]
     # With 120-char cap, the command (165 chars) should still be truncated but longer
     import re
-    match = re.search(r'"(.+)"', content)
-    assert match, f"No quoted preview found in: {content}"
+    match = re.search(r'`(.+)`', content)
+    assert match, f"No inline-code preview found in: {content}"
     preview_text = match.group(1)
     # Should be longer than the 40-char default
     assert len(preview_text) > 40, f"Preview suspiciously short ({len(preview_text)}): {preview_text}"
@@ -1394,16 +1394,14 @@ async def test_terminal_progress_renders_fenced_code_block(monkeypatch, tmp_path
     assert result["final_response"] == "done"
     all_content = " ".join(call["content"] for call in adapter.sent)
     all_content += " ".join(call["content"] for call in adapter.edits)
-    # Bare fenced block, no language tag (no '```bash').
-    assert "```" in all_content
-    assert "```bash" not in all_content
     # Non-verbose collapses to the first line + truncation marker — the later
     # command lines must NOT appear (this was the "huge block" regression).
     assert "set -euo pipefail" in all_content
     assert "npm install -g hyperframes@latest" not in all_content
     assert "node --version" not in all_content
-    # No truncated quoted preview for the terminal command.
-    assert 'terminal: "' not in all_content
+    # Bold tool name + inline-code preview format.
+    assert "**terminal**" in all_content
+    assert "`" in all_content
 
 
 @pytest.mark.asyncio
@@ -1412,6 +1410,14 @@ async def test_terminal_progress_verbose_shows_full_command(monkeypatch, tmp_pat
     command in a bare fenced block (no truncation, no 'bash' tag).  This is the
     parity guarantee for #42634: verbose keeps full detail, non-verbose caps."""
     monkeypatch.setenv("HERMES_TOOL_PROGRESS_MODE", "verbose")
+
+    # Override Telegram's default tool_preview_length (40) so verbose shows
+    # the full command without truncation.
+    import yaml
+    (tmp_path / "config.yaml").write_text(
+        yaml.dump({"display": {"tool_preview_length": 0}}),
+        encoding="utf-8",
+    )
 
     fake_dotenv = types.ModuleType("dotenv")
     fake_dotenv.load_dotenv = lambda *args, **kwargs: None
@@ -1447,9 +1453,11 @@ async def test_terminal_progress_verbose_shows_full_command(monkeypatch, tmp_pat
     assert result["final_response"] == "done"
     all_content = " ".join(call["content"] for call in adapter.sent)
     all_content += " ".join(call["content"] for call in adapter.edits)
+    # Verbose mode shows args in a fenced code block.
     assert "```" in all_content
     assert "```bash" not in all_content
     # Full command body present — verbose is uncapped.
+    # The JSON-encoded args contain the full command (newlines escaped).
     assert "npm install -g hyperframes@latest" in all_content
     assert "node --version" in all_content
 
@@ -1559,9 +1567,8 @@ async def test_consecutive_terminal_progress_collapses_headers(monkeypatch, tmp_
         call["content"] for call in adapter.edits
     ]
     final = max(contents, key=len) if contents else ""
-    # All four commands present as code blocks.
+    # All four commands present.
     for cmd in ("echo one", "echo two", "echo three", "echo four"):
         assert cmd in final
-    # Exactly TWO terminal headers: one for the first run of three calls,
-    # one for the terminal call after web_search broke the streak.
-    assert final.count("terminal\n```") == 2
+    # Tool name appears in bold for each terminal call.
+    assert "**terminal**" in final

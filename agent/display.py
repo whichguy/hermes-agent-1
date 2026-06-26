@@ -134,6 +134,43 @@ def get_skin_tool_prefix() -> str:
     return "┊"
 
 
+# ── Tool display names (pretty labels for gateway progress messages) ──────
+# Maps raw tool names with ugly underscores to clean short labels.
+_TOOL_DISPLAY_NAMES: dict[str, str] = {
+    "execute_code": "exec",
+    "delegate_task": "delegate",
+    "search_files": "search",
+    "read_file": "read",
+    "write_file": "write",
+    "browser_navigate": "browse",
+    "browser_click": "click",
+    "browser_type": "type",
+    "browser_snapshot": "snapshot",
+    "browser_vision": "vision",
+    "browser_scroll": "scroll",
+    "browser_back": "back",
+    "browser_press": "keypress",
+    "browser_console": "console",
+    "browser_get_images": "images",
+    "skill_view": "skill",
+    "skills_list": "skills",
+    "skill_manage": "skill-mgmt",
+    "session_search": "recall",
+    "vision_analyze": "vision",
+    "image_generate": "create",
+    "text_to_speech": "speak",
+    "send_message": "send",
+    "web_search": "search",
+    "web_extract": "extract",
+    "read_file": "read",
+}
+
+
+def get_tool_display_name(tool_name: str) -> str:
+    """Return a clean display name for a tool, falling back to the raw name."""
+    return _TOOL_DISPLAY_NAMES.get(tool_name, tool_name)
+
+
 def get_tool_emoji(tool_name: str, default: str = "⚡") -> str:
     """Get the display emoji for a tool.
 
@@ -277,6 +314,36 @@ def build_tool_preview(tool_name: str, args: dict, max_len: int | None = None) -
         if len(msg) > 20:
             msg = msg[:17] + "..."
         return f"to {target}: \"{msg}\""
+
+    if tool_name == "execute_code":
+        code = args.get("code", "")
+        if not code or not code.strip():
+            return None
+        lines = code.strip().split("\n")
+        # Skip common boilerplate (imports, comments, blank lines) to find
+        # the first line that hints at what the script actually does.
+        _BOILERPLATE_PREFIXES = (
+            "import ", "from ", "#", "\"\"\"", "'''",
+            "uv ", "pip ", "subprocess", "os.", "sys.",
+        )
+        first_meaningful = ""
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith(_BOILERPLATE_PREFIXES):
+                continue
+            first_meaningful = stripped
+            break
+        # Fallback: use first non-empty line if everything is boilerplate
+        if not first_meaningful:
+            first_meaningful = lines[0].strip() if lines else ""
+        line_count = len(lines)
+        if line_count == 1:
+            preview = _oneline(first_meaningful)
+        else:
+            preview = f"{line_count}L: {_oneline(first_meaningful)}"
+        return _truncate_preview(preview, max_len)
 
     key = primary_args.get(tool_name)
     if not key:
