@@ -2067,6 +2067,7 @@ def delegate_task(
     context: Optional[str] = None,
     toolsets: Optional[List[str]] = None,
     tasks: Optional[List[Dict[str, Any]]] = None,
+    model: Optional[str] = None,
     max_iterations: Optional[int] = None,
     acp_command: Optional[str] = None,
     acp_args: Optional[List[str]] = None,
@@ -2179,7 +2180,7 @@ def delegate_task(
         task_list = tasks
     elif goal and isinstance(goal, str) and goal.strip():
         task_list = [
-            {"goal": goal, "context": context, "toolsets": toolsets, "role": top_role}
+            {"goal": goal, "context": context, "toolsets": toolsets, "role": top_role, "model": model}
         ]
     else:
         return tool_error("Provide either 'goal' (single task) or 'tasks' (batch).")
@@ -2220,12 +2221,14 @@ def delegate_task(
             # Per-task role beats top-level; normalise again so unknown
             # per-task values warn and degrade to leaf uniformly.
             effective_role = _normalize_role(t.get("role") or top_role)
+            # Per-task model override: coerce to str, strip whitespace, fall back to config.
+            task_model = str(t.get("model") or "").strip() or creds["model"]
             child = _build_child_agent(
                 task_index=i,
                 goal=t["goal"],
                 context=t.get("context"),
                 toolsets=t.get("toolsets") or toolsets,
-                model=creds["model"],
+                model=task_model,
                 max_iterations=effective_max_iter,
                 task_count=n_tasks,
                 parent_agent=parent_agent,
@@ -2307,7 +2310,7 @@ def delegate_task(
                 context=_t.get("context"),
                 toolsets=_t.get("toolsets") or toolsets,
                 role=_normalize_role(_t.get("role") or top_role),
-                model=creds["model"],
+                model=str(_t.get("model") or "").strip() or creds["model"],
                 session_key=_session_key,
                 runner=_async_runner,
                 interrupt_fn=_async_interrupt,
@@ -2886,7 +2889,11 @@ def _build_top_level_description() -> str:
         f"user and can be disabled globally via "
         "delegation.orchestrator_enabled=false.\n"
         "- Each subagent gets its own terminal session (separate working directory and state).\n"
-        "- Results are always returned as an array, one entry per task."
+        "- Results are always returned as an array, one entry per task.\n"
+        "- Per-task model override: pass 'model' on a task (or top-level for "
+        "single-task mode) to route that subagent to a different model (e.g. "
+        "'deepseek-v4-pro:cloud' for heavy reasoning). Must be available on "
+        "the delegation provider. Leave empty to use the default delegation model."
     )
 
 
@@ -2900,7 +2907,8 @@ def _build_tasks_param_description() -> str:
         f"Batch mode: tasks to run in parallel (up to {max_children} for this "
         f"user, set via delegation.max_concurrent_children). Each gets "
         "its own subagent with isolated context and terminal session. "
-        "When provided, top-level goal/context/toolsets are ignored."
+        "When provided, top-level goal/context/toolsets are ignored. "
+        "Per-task 'model' overrides the default delegation model for that task."
     )
 
 
@@ -3009,6 +3017,16 @@ DELEGATE_TASK_SCHEMA = {
                     "['terminal', 'file', 'web'] for full-stack tasks."
                 ),
             },
+            "model": {
+                "type": "string",
+                "description": (
+                    "Per-task model override. When set, the subagent runs on "
+                    "the specified model instead of the default delegation model. "
+                    "Must be a model available on the delegation provider. "
+                    "Example: 'deepseek-v4-pro:cloud' for heavy reasoning. "
+                    "Leave empty to use the default delegation model."
+                ),
+            },
             "tasks": {
                 "type": "array",
                 "items": {
@@ -3023,6 +3041,15 @@ DELEGATE_TASK_SCHEMA = {
                             "type": "array",
                             "items": {"type": "string"},
                             "description": f"Toolsets for this specific task. Available: {_TOOLSET_LIST_STR}. Use 'web' for network access, 'terminal' for shell, 'browser' for web interaction.",
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": (
+                                "Per-task model override. When set, this task "
+                                "runs on the specified model instead of the "
+                                "default delegation model. Use for routing "
+                                "heavy reasoning to a larger model."
+                            ),
                         },
                         "acp_command": {
                             "type": "string",
@@ -3113,6 +3140,7 @@ registry.register(
         context=args.get("context"),
         toolsets=args.get("toolsets"),
         tasks=args.get("tasks"),
+        model=args.get("model"),
         max_iterations=args.get("max_iterations"),
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),

@@ -948,6 +948,7 @@ class SlackAdapter(BasePlatformAdapter):
                 "hermes_suggest_explain",
                 "hermes_suggest_do",
                 "hermes_suggest_dismiss",
+                "hermes_suggest_option",
             ):
                 self._app.action(_action_id)(self._handle_suggestion_action)
 
@@ -2740,11 +2741,18 @@ class SlackAdapter(BasePlatformAdapter):
         suggestion_text: str,
         can_auto_execute: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
+        options: Optional[list] = None,
     ) -> SendResult:
         """Send a suggestion block with Block Kit interactive buttons.
 
         The suggestion is sent as a separate message with a divider,
         a section showing the suggestion text, and action buttons.
+
+        When *options* is provided (a list of ``{"label", "prompt"}`` dicts),
+        one button is rendered per option — clicking it injects the option's
+        *prompt* back into the conversation.  A Dismiss button is always
+        appended.  When *options* is empty/None, the default Explain/Do/Dismiss
+        trio is used.
         """
         if not self._app:
             return SendResult(success=False, error="Not connected")
@@ -2752,26 +2760,50 @@ class SlackAdapter(BasePlatformAdapter):
             formatted = self.format_message(suggestion_text)
             thread_ts = self._resolve_thread_ts(None, metadata)
 
-            buttons = [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "✏️ Explain"},
-                    "action_id": "hermes_suggest_explain",
-                    "style": "primary",
-                },
-            ]
-            if can_auto_execute:
+            if options:
+                # Dynamic option buttons — prompt encoded in button value.
+                # Only the first option gets primary (green) style for visual
+                # hierarchy; the rest are default.  Parser already caps at 8.
+                buttons: list = []
+                for i, opt in enumerate(options[:8]):
+                    label = opt.get("label", "?")[:75]  # Slack plain_text limit
+                    prompt = opt.get("prompt", "")
+                    btn: dict = {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": label},
+                        "action_id": "hermes_suggest_option",
+                        "value": prompt[:2000],  # Slack value limit
+                    }
+                    if i == 0:
+                        btn["style"] = "primary"
+                    buttons.append(btn)
                 buttons.append({
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "▶️ Do it"},
-                    "action_id": "hermes_suggest_do",
-                    "style": "primary",
+                    "text": {"type": "plain_text", "text": "✕ Dismiss"},
+                    "action_id": "hermes_suggest_dismiss",
                 })
-            buttons.append({
-                "type": "button",
-                "text": {"type": "plain_text", "text": "✕ Dismiss"},
-                "action_id": "hermes_suggest_dismiss",
-            })
+            else:
+                # Default static buttons
+                buttons = [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✏️ Explain"},
+                        "action_id": "hermes_suggest_explain",
+                        "style": "primary",
+                    },
+                ]
+                if can_auto_execute:
+                    buttons.append({
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "▶️ Do it"},
+                        "action_id": "hermes_suggest_do",
+                        "style": "primary",
+                    })
+                buttons.append({
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "✕ Dismiss"},
+                    "action_id": "hermes_suggest_dismiss",
+                })
 
             blocks = [
                 {"type": "divider"},
@@ -2913,9 +2945,42 @@ class SlackAdapter(BasePlatformAdapter):
             "hermes_suggest_explain": "Explain what you did in the previous response — what tools you used and why.",
             "hermes_suggest_do": "Execute the suggested next step from the previous response.",
         }
-        prompt = prompt_map.get(action_id)
-        if not prompt:
-            return
+
+        if action_id == "hermes_suggest_option":
+            # Dynamic option button — the prompt is encoded in the button value.
+            prompt = action.get("value", "")
+            if not prompt:
+                return
+            # Get the label for the "✓ Selected" feedback
+            selected_label = ""
+            btn_text = action.get("text", {})
+            if isinstance(btn_text, dict):
+                selected_label = btn_text.get("text", "")
+        else:
+            prompt = prompt_map.get(action_id)
+            if not prompt:
+                return
+            selected_label = ""
+
+        # Disable buttons on click to prevent double-clicks and show selection.
+        if action_id in ("hermes_suggest_option", "hermes_suggest_explain", "hermes_suggest_do"):
+            try:
+                blocks = message.get("blocks", [])
+                # Replace actions block with a confirmation context block
+                updated_blocks = [b for b in blocks if b.get("type") != "actions"]
+                if selected_label:
+                    updated_blocks.append({
+                        "type": "context",
+                        "elements": [{"type": "mrkdwn", "text": f"✓ Selected: *{selected_label}*"}],
+                    })
+                await self._get_client(channel_id).chat_update(
+                    channel=channel_id,
+                    ts=msg_ts,
+                    text=f"⚡ Suggestion (selected: {selected_label})" if selected_label else "⚡ Suggestion",
+                    blocks=updated_blocks,
+                )
+            except Exception as e:
+                logger.debug("[Slack] Suggestion click-update failed: %s", e)
 
         from gateway.session import SessionSource, Platform
         from gateway.platforms.base import MessageEvent

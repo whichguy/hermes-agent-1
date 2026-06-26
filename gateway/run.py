@@ -12013,17 +12013,24 @@ class GatewayRunner:
             return
 
         next_step = suggestion.next or suggestion.learn
-        if not next_step:
+        if not next_step and not suggestion.options:
             return
 
-        suggestion_text = f"⚡ Next: {next_step}"
-        if suggestion.reason:
-            suggestion_text += f" — {suggestion.reason}"
+        if next_step:
+            suggestion_text = f"⚡ Next: {next_step}"
+            if suggestion.reason:
+                suggestion_text += f" — {suggestion.reason}"
+        elif suggestion.options:
+            # Options-only suggestion — use a generic header.
+            suggestion_text = "⚡ Choose a next step"
+            if suggestion.reason:
+                suggestion_text += f" — {suggestion.reason}"
 
         await adapter.send_suggestion(
             source.chat_id,
             suggestion_text,
             can_auto_execute=suggestion.can_do,
+            options=suggestion.options,
             metadata=self._thread_metadata_for_source(
                 source, self._reply_anchor_for_event(event)
             ),

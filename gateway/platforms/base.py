@@ -3921,15 +3921,22 @@ class BasePlatformAdapter(ABC):
                 if _suggestion and hasattr(self, "send_suggestion"):
                     try:
                         _next = _suggestion.next or _suggestion.learn
-                        _suggestion_text = f"⚡ Next: {_next}"
-                        if _suggestion.reason:
+                        if _next:
+                            _suggestion_text = f"⚡ Next: {_next}"
+                        elif _suggestion.options:
+                            _suggestion_text = "⚡ Choose a next step"
+                        else:
+                            _suggestion_text = ""
+                        if _suggestion_text and _suggestion.reason:
                             _suggestion_text += f" — {_suggestion.reason}"
-                        await self.send_suggestion(
-                            chat_id=event.source.chat_id,
-                            suggestion_text=_suggestion_text,
-                            can_auto_execute=_suggestion.can_do,
-                            metadata=_thread_metadata,
-                        )
+                        if _suggestion_text:
+                            await self.send_suggestion(
+                                chat_id=event.source.chat_id,
+                                suggestion_text=_suggestion_text,
+                                can_auto_execute=_suggestion.can_do,
+                                options=_suggestion.options,
+                                metadata=_thread_metadata,
+                            )
                     except Exception as _sg_err:
                         logger.debug("[%s] send_suggestion failed: %s", self.name, _sg_err)
 
