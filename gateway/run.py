@@ -12016,6 +12016,8 @@ class GatewayRunner:
         if not next_step and not suggestion.options:
             return
 
+        # Build suggestion text.  When both next_step and options are present,
+        # show the next step as the header and render options as buttons too.
         if next_step:
             suggestion_text = f"⚡ Next: {next_step}"
             if suggestion.reason:

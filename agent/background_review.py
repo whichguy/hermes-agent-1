@@ -658,9 +658,9 @@ def _run_review_in_thread(
             summary = "\n".join(f"  • {a}" for a in unique_actions)
             header = "💾 Self-improvement review:"
             full_message = f"{header}\n{summary}"
-            agent._safe_print(
-                f"  💾 Self-improvement review: {' · '.join(unique_actions)}"
-            )
+            # Terminal print uses the same bullet format as the callback
+            # for consistency across CLI and platform delivery.
+            agent._safe_print(f"  {full_message}")
             _bg_cb = agent.background_review_callback
             if _bg_cb:
                 try:

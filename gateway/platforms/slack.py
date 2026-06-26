@@ -2766,13 +2766,26 @@ class SlackAdapter(BasePlatformAdapter):
                 # hierarchy; the rest are default.  Parser already caps at 8.
                 buttons: list = []
                 for i, opt in enumerate(options[:8]):
-                    label = opt.get("label", "?")[:75]  # Slack plain_text limit
-                    prompt = opt.get("prompt", "")
+                    raw_label = opt.get("label", "?")
+                    label = raw_label[:75]  # Slack plain_text limit
+                    if len(raw_label) > 75:
+                        logger.warning(
+                            "[Slack] Suggestion option label truncated to 75 chars: %r",
+                            raw_label[:100],
+                        )
+                    raw_prompt = opt.get("prompt", "")
+                    prompt = raw_prompt[:2000]  # Slack value limit
+                    if len(raw_prompt) > 2000:
+                        logger.warning(
+                            "[Slack] Suggestion option prompt truncated to 2000 chars "
+                            "(label=%r) — prompt may be incomplete when injected",
+                            label,
+                        )
                     btn: dict = {
                         "type": "button",
                         "text": {"type": "plain_text", "text": label},
                         "action_id": "hermes_suggest_option",
-                        "value": prompt[:2000],  # Slack value limit
+                        "value": prompt,
                     }
                     if i == 0:
                         btn["style"] = "primary"

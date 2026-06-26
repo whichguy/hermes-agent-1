@@ -16,8 +16,10 @@ import os
 import tempfile
 import html as _html
 import re
+import time
+import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -354,6 +356,9 @@ class TelegramAdapter(BasePlatformAdapter):
     # Backwards-compatible alias for tests/external callers that referenced the
     # initial implementation name. The API limit is character-based, not bytes.
     RICH_MESSAGE_MAX_BYTES = RICH_MESSAGE_MAX_CHARS
+    # TTL for stored suggestion option prompts (seconds). Entries older than
+    # this are pruned to prevent unbounded dict growth.
+    _SUGGESTION_OPTIONS_TTL_SECONDS = 3600  # 1 hour
     # Threshold for detecting Telegram client-side message splits.
     # When a chunk is near this limit, a continuation is almost certain.
     _SPLIT_THRESHOLD = 4000
@@ -514,9 +519,11 @@ class TelegramAdapter(BasePlatformAdapter):
         # Slash-confirm button state: confirm_id → session_key (for /reload-mcp
         # and any other slash-confirm prompts; see GatewayRunner._request_slash_confirm).
         self._slash_confirm_state: Dict[str, str] = {}
-        # Suggestion option prompts: short_id → prompt text (for dynamic
-        # option buttons where callback_data is too small to hold the prompt)
-        self._suggestion_options: Dict[str, str] = {}
+        # Suggestion option prompts: short_id → (prompt, inserted_at) tuple.
+        # Stores prompts for dynamic option buttons where callback_data is
+        # too small to hold the full prompt. Entries are pruned after
+        # _SUGGESTION_OPTIONS_TTL_SECONDS to prevent unbounded growth.
+        self._suggestion_options: Dict[str, Tuple[str, float]] = {}
         # Clarify button state: clarify_id → session_key (for the clarify tool's
         # multiple-choice prompts; see GatewayRunner clarify_callback wiring).
         self._clarify_state: Dict[str, str] = {}
@@ -3345,6 +3352,23 @@ class TelegramAdapter(BasePlatformAdapter):
             logger.warning("[%s] send_exec_approval failed: %s", self.name, e)
             return SendResult(success=False, error=str(e))
 
+    def _prune_suggestion_options(self) -> None:
+        """Remove expired entries from _suggestion_options to prevent unbounded growth.
+
+        Called before adding new options. Entries older than
+        ``_SUGGESTION_OPTIONS_TTL_SECONDS`` are removed.
+        """
+        if not self._suggestion_options:
+            return
+        now = time.monotonic()
+        ttl = self._SUGGESTION_OPTIONS_TTL_SECONDS
+        expired = [
+            k for k, (_, ts) in self._suggestion_options.items()
+            if now - ts > ttl
+        ]
+        for k in expired:
+            del self._suggestion_options[k]
+
     async def send_suggestion(
         self,
         chat_id: str,
@@ -3368,14 +3392,14 @@ class TelegramAdapter(BasePlatformAdapter):
             if options:
                 # Dynamic option buttons — store prompt keyed by short id
                 # (Telegram callback_data limit is 64 bytes).
+                self._prune_suggestion_options()
                 buttons = []
                 row = []
-                import uuid
                 for opt in options[:8]:  # reasonable limit per message
                     label = opt.get("label", "?")[:60]
                     prompt = opt.get("prompt", "")
-                    short_id = uuid.uuid4().hex[:8]
-                    self._suggestion_options[short_id] = prompt
+                    short_id = uuid.uuid4().hex[:12]  # 12-char ID: collision-safe
+                    self._suggestion_options[short_id] = (prompt, time.monotonic())
                     row.append(InlineKeyboardButton(
                         label,
                         callback_data=f"sg:opt:{short_id}",
@@ -4080,9 +4104,9 @@ class TelegramAdapter(BasePlatformAdapter):
             elif action.startswith("opt:"):
                 # Dynamic option button — look up the stored prompt
                 short_id = action[4:]
-                prompt = self._suggestion_options.pop(short_id, "")
-                if not prompt:
-                    # Expired — option was lost (e.g. gateway restart)
+                entry = self._suggestion_options.pop(short_id, None)
+                if not entry or not isinstance(entry, tuple):
+                    # Expired — option was lost (e.g. gateway restart) or malformed
                     try:
                         current_text = query_message.text if query_message else ""
                         await query.edit_message_text(
@@ -4094,6 +4118,7 @@ class TelegramAdapter(BasePlatformAdapter):
                         pass
                     await query.answer(text="This suggestion has expired — please re-request.")
                     return
+                prompt = entry[0]  # (prompt, inserted_at)
 
                 # Disable buttons and show selection
                 selected_label = ""
@@ -4116,7 +4141,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     else:
                         updated_text = current_text
                     await query.edit_message_text(
-                        text=self.format_message(updated_text) if hasattr(self, "format_message") else updated_text,
+                        text=self.format_message(updated_text),
                         parse_mode=ParseMode.MARKDOWN_V2,
                         reply_markup=None,
                     )
