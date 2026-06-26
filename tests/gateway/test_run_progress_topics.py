@@ -522,37 +522,37 @@ def _run_long_preview_helper(monkeypatch, tmp_path, preview_length=0):
     return adapter, result
 
 
-def test_all_mode_default_truncation_40_chars(monkeypatch, tmp_path):
-    """When tool_preview_length is 0 (default), all/new mode truncates to 40 chars."""
+def test_all_mode_default_truncation_120_chars(monkeypatch, tmp_path):
+    """When tool_preview_length is 0 (default), all/new mode truncates to 120 chars."""
     adapter, result = _run_long_preview_helper(monkeypatch, tmp_path, preview_length=0)
     assert result["final_response"] == "done"
     assert adapter.sent
     content = adapter.sent[0]["content"]
-    # The long command should be truncated — total preview <= 40 chars
+    # The long command should be truncated — total preview <= 120 chars
     assert "..." in content
     # Extract the preview part between backticks
     import re
     match = re.search(r'`(.+)`', content)
     assert match, f"No inline-code preview found in: {content}"
     preview_text = match.group(1)
-    assert len(preview_text) <= 40, f"Preview too long ({len(preview_text)}): {preview_text}"
+    assert len(preview_text) <= 120, f"Preview too long ({len(preview_text)}): {preview_text}"
 
 
 def test_all_mode_respects_custom_preview_length(monkeypatch, tmp_path):
-    """When tool_preview_length is explicitly set (e.g. 120), all/new mode uses that."""
-    adapter, result = _run_long_preview_helper(monkeypatch, tmp_path, preview_length=120)
+    """When tool_preview_length is explicitly set (e.g. 200), all/new mode uses that."""
+    adapter, result = _run_long_preview_helper(monkeypatch, tmp_path, preview_length=200)
     assert result["final_response"] == "done"
     assert adapter.sent
     content = adapter.sent[0]["content"]
-    # With 120-char cap, the command (165 chars) should still be truncated but longer
+    # With 200-char cap, the command (165 chars) should NOT be truncated
     import re
     match = re.search(r'`(.+)`', content)
     assert match, f"No inline-code preview found in: {content}"
     preview_text = match.group(1)
-    # Should be longer than the 40-char default
-    assert len(preview_text) > 40, f"Preview suspiciously short ({len(preview_text)}): {preview_text}"
-    # But still capped at 120
-    assert len(preview_text) <= 120, f"Preview too long ({len(preview_text)}): {preview_text}"
+    # Should be longer than the 120-char default
+    assert len(preview_text) > 120, f"Preview suspiciously short ({len(preview_text)}): {preview_text}"
+    # But still capped at 200
+    assert len(preview_text) <= 200, f"Preview too long ({len(preview_text)}): {preview_text}"
 
 
 def test_all_mode_no_truncation_when_preview_fits(monkeypatch, tmp_path):

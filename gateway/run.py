@@ -16655,12 +16655,12 @@ class GatewayRunner:
                 return
 
             # "all" / "new" modes: short preview, respects tool_preview_length
-            # config (defaults to 40 chars when unset to keep gateway messages
-            # compact — unlike CLI spinners, these persist as permanent messages).
+            # config (defaults to 120 chars when unset — enough to show a
+            # meaningful command/snippet without overwhelming the chat).
             if preview:
                 from agent.display import get_tool_preview_max_len
                 _pl = get_tool_preview_max_len()
-                _cap = _pl if _pl > 0 else 40
+                _cap = _pl if _pl > 0 else 120
                 if len(preview) > _cap:
                     preview = preview[:_cap - 3] + "..."
                 msg = f"{emoji} **{display_name}**: `{preview}`"
