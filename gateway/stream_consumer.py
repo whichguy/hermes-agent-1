@@ -38,25 +38,34 @@ logger = logging.getLogger("gateway.stream_consumer")
 # Sentinel to signal the stream is complete
 _DONE = object()
 
-# Regex to count triple-backtick code fences in text.
-_FENCE_RE = re.compile(r"```")
+# Markdown stream state machine — properly tracks code blocks and inline
+# code during streaming so partial messages don't show raw backticks.
+from gateway.markdown_state import MarkdownStreamState as _MdState
 
 
 def _balance_code_fences(text: str) -> str:
-    """Temporarily close unclosed code fences in streaming text.
+    """Close unclosed markdown constructs in streaming text.
 
-    During streaming, the model may emit an opening ```` ``` ```` fence before
-    the closing fence has been generated.  Without this, the partial message
-    shows raw triple-backticks as visible text on platforms like Slack.
+    During streaming, the model may emit an opening ```` ``` ```` fence or
+    a single `` ` `` for inline code before the closing marker has been
+    generated.  Without this, the partial message shows raw backticks as
+    visible text on platforms like Slack.
 
-    If the number of triple-backtick fences is odd (unclosed), append a
-    closing ```` ``` ```` so the displayed text renders cleanly.  The next
-    edit with more content replaces this with the real text.
+    Uses a character-level state machine (``MarkdownStreamState``) that
+    properly handles:
+
+    - Triple-backtick fences (```` ``` ````) with optional language hints
+    - Tilde fences (``~~~``)
+    - Single-backtick inline code
+    - Backticks inside code blocks (treated as literal, not state transitions)
+    - Fences inside inline code
+
+    If the text ends inside a code block, appends a closing fence.
+    If it ends inside inline code, appends a closing backtick.
+    Otherwise returns *text* unchanged.  The next edit with more content
+    replaces the temporary closing markers with the real text.
     """
-    count = len(_FENCE_RE.findall(text))
-    if count % 2 == 1:
-        return text + "\n```"
-    return text
+    return _MdState.close_open_constructs(text)
 
 # Sentinel to signal a tool boundary — finalize current message and start a
 # new one so that subsequent text appears below tool progress messages.
