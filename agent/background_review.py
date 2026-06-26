@@ -652,16 +652,19 @@ def _run_review_in_thread(
         )
 
         if actions:
-            summary = " · ".join(dict.fromkeys(actions))
+            # Deduplicate while preserving order
+            unique_actions = list(dict.fromkeys(actions))
+            # Format as a structured markdown list instead of a flat `·`-joined string
+            summary = "\n".join(f"  • {a}" for a in unique_actions)
+            header = "💾 Self-improvement review:"
+            full_message = f"{header}\n{summary}"
             agent._safe_print(
-                f"  💾 Self-improvement review: {summary}"
+                f"  💾 Self-improvement review: {' · '.join(unique_actions)}"
             )
             _bg_cb = agent.background_review_callback
             if _bg_cb:
                 try:
-                    _bg_cb(
-                        f"💾 Self-improvement review: {summary}"
-                    )
+                    _bg_cb(full_message)
                 except Exception:
                     pass
 

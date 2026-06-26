@@ -38,6 +38,26 @@ logger = logging.getLogger("gateway.stream_consumer")
 # Sentinel to signal the stream is complete
 _DONE = object()
 
+# Regex to count triple-backtick code fences in text.
+_FENCE_RE = re.compile(r"```")
+
+
+def _balance_code_fences(text: str) -> str:
+    """Temporarily close unclosed code fences in streaming text.
+
+    During streaming, the model may emit an opening ```` ``` ```` fence before
+    the closing fence has been generated.  Without this, the partial message
+    shows raw triple-backticks as visible text on platforms like Slack.
+
+    If the number of triple-backtick fences is odd (unclosed), append a
+    closing ```` ``` ```` so the displayed text renders cleanly.  The next
+    edit with more content replaces this with the real text.
+    """
+    count = len(_FENCE_RE.findall(text))
+    if count % 2 == 1:
+        return text + "\n```"
+    return text
+
 # Sentinel to signal a tool boundary — finalize current message and start a
 # new one so that subsequent text appears below tool progress messages.
 _NEW_SEGMENT = object()
@@ -1343,6 +1363,13 @@ class GatewayStreamConsumer:
         # Media files are delivered as native attachments after the stream
         # finishes (via _deliver_media_from_response in gateway/run.py).
         text = self._clean_for_display(text)
+        # Balance unclosed code fences during streaming so partial messages
+        # don't show raw triple-backticks as visible text. When the model
+        # emits an opening ``` but the closing fence hasn't arrived yet,
+        # we temporarily append a closing fence to the displayed text.
+        # On the next edit (with more content), the real text replaces it.
+        if not finalize:
+            text = _balance_code_fences(text)
         # A bare streaming cursor is not meaningful user-visible content and
         # can render as a stray tofu/white-box message on some clients.
         visible_without_cursor = text
