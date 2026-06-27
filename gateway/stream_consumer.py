@@ -38,6 +38,35 @@ logger = logging.getLogger("gateway.stream_consumer")
 # Sentinel to signal the stream is complete
 _DONE = object()
 
+# Markdown stream state machine — properly tracks code blocks and inline
+# code during streaming so partial messages don't show raw backticks.
+from gateway.markdown_state import MarkdownStreamState as _MdState
+
+
+def _balance_code_fences(text: str) -> str:
+    """Close unclosed markdown constructs in streaming text.
+
+    During streaming, the model may emit an opening ```` ``` ```` fence or
+    a single `` ` `` for inline code before the closing marker has been
+    generated.  Without this, the partial message shows raw backticks as
+    visible text on platforms like Slack.
+
+    Uses a character-level state machine (``MarkdownStreamState``) that
+    properly handles:
+
+    - Triple-backtick fences (```` ``` ````) with optional language hints
+    - Tilde fences (``~~~``)
+    - Single-backtick inline code
+    - Backticks inside code blocks (treated as literal, not state transitions)
+    - Fences inside inline code
+
+    If the text ends inside a code block, appends a closing fence.
+    If it ends inside inline code, appends a closing backtick.
+    Otherwise returns *text* unchanged.  The next edit with more content
+    replaces the temporary closing markers with the real text.
+    """
+    return _MdState.close_open_constructs(text)
+
 # Sentinel to signal a tool boundary — finalize current message and start a
 # new one so that subsequent text appears below tool progress messages.
 _NEW_SEGMENT = object()
@@ -779,21 +808,31 @@ class GatewayStreamConsumer:
     # treated identically whichever path delivered the text.
     _MEDIA_RE = MEDIA_TAG_CLEANUP_RE
 
+    # Strip SUGGESTION:{...} markers from streamed text. The marker is
+    # post-processed by _deliver_suggestion_from_response after the stream
+    # completes; hiding it during streaming prevents raw JSON from flashing
+    # to the user before the interactive button message is sent.
+    _SUGGESTION_RE = re.compile(r"SUGGESTION:\s*\{.*?\}\s*$", re.DOTALL)
+
     @staticmethod
     def _clean_for_display(text: str) -> str:
-        """Strip MEDIA: directives and internal markers from text before display.
+        """Strip MEDIA: directives, SUGGESTION markers, and internal markers from text before display.
 
         The streaming path delivers raw text chunks that may include
-        ``MEDIA:<path>`` tags and ``[[audio_as_voice]]`` directives meant for
-        the platform adapter's post-processing.  The actual media files are
-        delivered separately via ``_deliver_media_from_response()`` after the
-        stream finishes — we just need to hide the raw directives from the
-        user.
+        ``MEDIA:<path>`` tags, ``[[audio_as_voice]]`` directives, and
+        ``SUGGESTION:{...}`` markers meant for the platform adapter's
+        post-processing.  The actual media files are delivered separately
+        via ``_deliver_media_from_response()`` and suggestion buttons via
+        ``_deliver_suggestion_from_response()`` after the stream finishes
+        — we just need to hide the raw directives from the user.
         """
-        if "MEDIA:" not in text and "[[audio_as_voice]]" not in text:
+        if "MEDIA:" not in text and "[[audio_as_voice]]" not in text and "SUGGESTION:" not in text:
             return text
         cleaned = text.replace("[[audio_as_voice]]", "")
         cleaned = GatewayStreamConsumer._MEDIA_RE.sub("", cleaned)
+        # Strip SUGGESTION:{...} marker — delivered as interactive buttons
+        # after streaming completes (via _deliver_suggestion_from_response).
+        cleaned = GatewayStreamConsumer._SUGGESTION_RE.sub("", cleaned)
         # Collapse excessive blank lines left behind by removed tags
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         # Strip trailing whitespace/newlines but preserve leading content
@@ -1355,6 +1394,9 @@ class GatewayStreamConsumer:
         # Media files are delivered as native attachments after the stream
         # finishes (via _deliver_media_from_response in gateway/run.py).
         text = self._clean_for_display(text)
+        # Balance unclosed markdown fences before sending so platforms don't
+        # render raw backticks when streaming pauses mid-code-block.
+        text = _balance_code_fences(text)
         # A bare streaming cursor is not meaningful user-visible content and
         # can render as a stray tofu/white-box message on some clients.
         visible_without_cursor = text

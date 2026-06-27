@@ -15,8 +15,10 @@ import logging
 import os
 import html as _html
 import re
+import time
+import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -468,6 +470,11 @@ class TelegramAdapter(BasePlatformAdapter):
         # Slash-confirm button state: confirm_id → session_key (for /reload-mcp
         # and any other slash-confirm prompts; see GatewayRunner._request_slash_confirm).
         self._slash_confirm_state: Dict[str, str] = {}
+        # Suggestion option state: short_id → (prompt, inserted_at). Used by
+        # send_suggestion's dynamic option buttons whose callback_data is
+        # limited to 64 bytes; the full prompt is stored server-side.
+        self._suggestion_options: Dict[str, Tuple[str, float]] = {}
+        self._SUGGESTION_OPTIONS_TTL_SECONDS = 3600
         # Clarify button state: clarify_id → session_key (for the clarify tool's
         # multiple-choice prompts; see GatewayRunner clarify_callback wiring).
         self._clarify_state: Dict[str, str] = {}
@@ -3675,6 +3682,98 @@ class TelegramAdapter(BasePlatformAdapter):
             logger.warning("[%s] send_slash_confirm failed: %s", self.name, e)
             return SendResult(success=False, error=str(e))
 
+    def _prune_suggestion_options(self) -> None:
+        """Remove expired entries from _suggestion_options to prevent unbounded growth.
+
+        Called before adding new options. Entries older than
+        ``_SUGGESTION_OPTIONS_TTL_SECONDS`` are removed.
+        """
+        if not self._suggestion_options:
+            return
+        now = time.monotonic()
+        ttl = self._SUGGESTION_OPTIONS_TTL_SECONDS
+        expired = [
+            k for k, (_, ts) in self._suggestion_options.items()
+            if now - ts > ttl
+        ]
+        for k in expired:
+            del self._suggestion_options[k]
+
+    async def send_suggestion(
+        self,
+        chat_id: str,
+        suggestion_text: str,
+        can_auto_execute: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
+        options: Optional[list] = None,
+    ) -> SendResult:
+        """Send a suggestion block with inline keyboard buttons.
+
+        The suggestion is sent as a separate message after the main response.
+        When *options* is provided, one button per option is rendered (clicking
+        injects the option's prompt). Otherwise the default Explain/Do/Dismiss
+        trio is used.
+        """
+        if not self._bot:
+            return SendResult(success=False, error="Not connected")
+        try:
+            text = self.format_message(suggestion_text)
+
+            if options:
+                # Dynamic option buttons — store prompt keyed by short id
+                # (Telegram callback_data limit is 64 bytes).
+                self._prune_suggestion_options()
+                buttons = []
+                row = []
+                for opt in options[:8]:  # reasonable limit per message
+                    label = opt.get("label", "?")[:60]
+                    prompt = opt.get("prompt", "")
+                    short_id = uuid.uuid4().hex[:12]  # 12-char ID: collision-safe
+                    self._suggestion_options[short_id] = (prompt, time.monotonic())
+                    row.append(InlineKeyboardButton(
+                        label,
+                        callback_data=f"sg:opt:{short_id}",
+                    ))
+                    if len(row) == 2:  # 2 buttons per row
+                        buttons.append(row)
+                        row = []
+                if row:
+                    buttons.append(row)
+                buttons.append([InlineKeyboardButton("✕ Dismiss", callback_data="sg:dismiss")])
+            else:
+                buttons = []
+                row1 = [InlineKeyboardButton("✏️ Explain", callback_data="sg:explain")]
+                if can_auto_execute:
+                    row1.append(InlineKeyboardButton("▶️ Do it", callback_data="sg:do"))
+                buttons.append(row1)
+                buttons.append([InlineKeyboardButton("✕ Dismiss", callback_data="sg:dismiss")])
+
+            keyboard = InlineKeyboardMarkup(buttons)
+
+            thread_id = self._metadata_thread_id(metadata)
+            reply_to_id = self._reply_to_message_id_for_send(
+                None, metadata, reply_to_mode=self._reply_to_mode
+            )
+            msg = await self._send_message_with_thread_fallback(
+                chat_id=int(chat_id),
+                text=text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=keyboard,
+                reply_to_message_id=reply_to_id,
+                **self._thread_kwargs_for_send(
+                    chat_id,
+                    thread_id,
+                    metadata,
+                    reply_to_message_id=reply_to_id,
+                    reply_to_mode=self._reply_to_mode,
+                ),
+                **self._link_preview_kwargs(),
+            )
+            return SendResult(success=True, message_id=str(msg.message_id))
+        except Exception as e:
+            logger.warning("[%s] send_suggestion failed: %s", self.name, e)
+            return SendResult(success=False, error=str(e))
+
     async def send_clarify(
         self,
         chat_id: str,
@@ -4424,6 +4523,128 @@ class TelegramAdapter(BasePlatformAdapter):
                         await self._send_message_with_thread_fallback(**send_kwargs)
                 except Exception as exc:
                     logger.error("[%s] slash-confirm callback failed: %s", self.name, exc, exc_info=True)
+            return
+
+        # --- Suggestion callbacks (sg:action) ---
+        if data.startswith("sg:"):
+            action = data.split(":", 1)[1] if ":" in data else ""
+
+            # Verify user is authorized
+            caller_id = str(getattr(query.from_user, "id", ""))
+            if not self._is_callback_user_authorized(
+                caller_id,
+                chat_id=query_chat_id,
+                chat_type=str(query_chat_type) if query_chat_type is not None else None,
+                thread_id=str(query_thread_id) if query_thread_id is not None else None,
+                user_name=query_user_name,
+            ):
+                await query.answer(text="⛔ Not authorized.")
+                return
+
+            if action == "dismiss":
+                # Edit message to remove buttons, keep suggestion text
+                try:
+                    current_text = query_message.text if query_message else ""
+                    await query.edit_message_text(
+                        text=current_text,
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+                await query.answer(text="Dismissed")
+
+            elif action.startswith("opt:"):
+                # Dynamic option button — look up the stored prompt
+                short_id = action[4:]
+                entry = self._suggestion_options.pop(short_id, None)
+                if not entry or not isinstance(entry, tuple):
+                    # Expired — option was lost (e.g. gateway restart) or malformed
+                    try:
+                        current_text = query_message.text if query_message else ""
+                        await query.edit_message_text(
+                            text=current_text,
+                            parse_mode=ParseMode.MARKDOWN_V2,
+                            reply_markup=None,
+                        )
+                    except Exception:
+                        pass
+                    await query.answer(text="This suggestion has expired — please re-request.")
+                    return
+                prompt = entry[0]  # (prompt, inserted_at)
+
+                # Disable buttons and show selection
+                selected_label = ""
+                btn = getattr(query, "message", None)
+                if btn:
+                    # Try to find the button label from the inline keyboard
+                    try:
+                        for row in (btn.reply_markup or {}).get("inline_keyboard", []):
+                            for kb_btn in row:
+                                if kb_btn.get("callback_data") == data:
+                                    selected_label = kb_btn.get("text", "")
+                                    break
+                    except Exception:
+                        pass
+
+                try:
+                    current_text = query_message.text if query_message else ""
+                    if selected_label:
+                        updated_text = f"{current_text}\n\n✓ Selected: *{selected_label}*"
+                    else:
+                        updated_text = current_text
+                    await query.edit_message_text(
+                        text=self.format_message(updated_text),
+                        parse_mode=ParseMode.MARKDOWN_V2,
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+
+                await query.answer(text="Starting...")
+                if query_chat_id:
+                    from gateway.session import SessionSource, Platform
+                    from gateway.platforms.base import MessageEvent
+                    source = SessionSource(
+                        platform=Platform.TELEGRAM,
+                        chat_id=str(query_chat_id),
+                        chat_type=str(query_chat_type) if query_chat_type else "dm",
+                        user_id=caller_id,
+                        user_name=query_user_name,
+                        thread_id=str(query_thread_id) if query_thread_id else None,
+                    )
+                    event = MessageEvent(
+                        text=prompt,
+                        source=source,
+                        internal=True,
+                    )
+                    await self.handle_message(event)
+
+            elif action in ("explain", "do"):
+                # Inject a synthetic message into the gateway session
+                prompt_map = {
+                    "explain": "Explain what you did in the previous response — what tools you used and why.",
+                    "do": "Execute the suggested next step from the previous response.",
+                }
+                await query.answer(text={"explain": "Explaining...", "do": "Executing..."}[action])
+                if query_chat_id:
+                    from gateway.session import SessionSource, Platform
+                    from gateway.platforms.base import MessageEvent
+                    source = SessionSource(
+                        platform=Platform.TELEGRAM,
+                        chat_id=str(query_chat_id),
+                        chat_type=str(query_chat_type) if query_chat_type else "dm",
+                        user_id=caller_id,
+                        user_name=query_user_name,
+                        thread_id=str(query_thread_id) if query_thread_id else None,
+                    )
+                    event = MessageEvent(
+                        text=prompt_map[action],
+                        source=source,
+                        internal=True,
+                    )
+                    await self.handle_message(event)
+
             return
 
         # --- Clarify callbacks (cl:clarify_id:idx | cl:clarify_id:other) ---
