@@ -375,7 +375,7 @@ def gmail_reply(args):
         if not subject.startswith("Re:"):
             subject = f"Re: {subject}"
 
-        message = MIMEText(args.body)
+        message = MIMEText(args.body, "html" if getattr(args, "html", False) else "plain")
         message["To"] = headers.get("from", "")
         message["Subject"] = subject
         if args.from_header:
@@ -404,7 +404,7 @@ def gmail_reply(args):
     if not subject.startswith("Re:"):
         subject = f"Re: {subject}"
 
-    message = MIMEText(args.body)
+    message = MIMEText(args.body, "html" if getattr(args, "html", False) else "plain")
     message["To"] = headers.get("from", "")
     message["Subject"] = subject
     if args.from_header:
@@ -1051,7 +1051,7 @@ def _docs_insert_text(doc_id: str, text: str, index: int) -> None:
 # =========================================================================
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Google Workspace API for Hermes Agent")
     sub = parser.add_subparsers(dest="service", required=True)
 
@@ -1082,6 +1082,7 @@ def main():
     p.add_argument("message_id", help="Message ID to reply to")
     p.add_argument("--body", required=True)
     p.add_argument("--from", dest="from_header", default="", help="Custom From header (e.g. '\"Agent Name\" <user@example.com>')")
+    p.add_argument("--html", action="store_true", help="Send reply body as HTML")
     p.set_defaults(func=gmail_reply)
 
     p = gmail_sub.add_parser("labels")
@@ -1217,6 +1218,11 @@ def main():
     p.add_argument("--text", required=True, help="Text to append to the end of the document")
     p.set_defaults(func=docs_append)
 
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     args.func(args)
 

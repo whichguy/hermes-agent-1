@@ -435,6 +435,57 @@ def test_api_gmail_reply_reads_headers_case_insensitively_and_uses_conventional_
     assert "\nreferences: " not in raw_text
 
 
+def test_api_gmail_reply_html_keeps_gmail_thread_headers(api_module):
+    """HTML Gmail replies should be text/html and stay attached to the original Gmail thread."""
+    calls = []
+
+    def fake_run_gws(parts, *, params=None, body=None):
+        calls.append({"parts": parts, "params": params, "body": body})
+        if parts == ["gmail", "users", "messages", "get"]:
+            return {
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "Subject", "value": "hello"},
+                        {"name": "Message-ID", "value": "<msg-1@example.com>"},
+                    ],
+                },
+            }
+        return {"id": "sent-1", "threadId": "thread-1"}
+
+    api_module._run_gws = fake_run_gws
+    args = api_module.argparse.Namespace(
+        message_id="msg-1",
+        body="<div><strong>Fancy reply</strong></div>",
+        from_header="recipient@example.com",
+        html=True,
+        func=api_module.gmail_reply,
+    )
+
+    api_module.gmail_reply(args)
+
+    body = calls[1]["body"]
+    assert body["threadId"] == "thread-1"
+    raw = api_module.base64.urlsafe_b64decode(body["raw"])
+    raw_text = raw.decode()
+    assert "Content-Type: text/html" in raw_text
+    assert "To: sender@example.com" in raw_text
+    assert "Subject: Re: hello" in raw_text
+    assert "In-Reply-To: <msg-1@example.com>" in raw_text
+    assert "References: <msg-1@example.com>" in raw_text
+    assert "Fancy reply" in raw_text
+
+
+def test_api_gmail_reply_parser_accepts_html_flag(api_module):
+    """The CLI should expose --html for threaded Gmail replies, not just new messages."""
+    parser = api_module.build_parser()
+    args = parser.parse_args(["gmail", "reply", "msg-1", "--body", "<p>Hi</p>", "--html"])
+    assert args.html is True
+    assert args.func is api_module.gmail_reply
+
+
 def test_api_get_credentials_refresh_persists_authorized_user_type(api_module, monkeypatch):
     token_path = api_module.TOKEN_PATH
     _write_token(token_path, token="ya29.old")

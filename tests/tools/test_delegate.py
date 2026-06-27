@@ -2869,5 +2869,605 @@ class TestFallbackModelInheritance(unittest.TestCase):
         self.assertIsNone(kwargs["fallback_model"])
 
 
+class TestPerTaskModelOverride(unittest.TestCase):
+    """Per-task model override: route individual subagent tasks to a
+    different model while keeping the default delegation model for others."""
+
+    def test_schema_exposes_model_param(self):
+        """model field in both top-level and per-task schema."""
+        props = DELEGATE_TASK_SCHEMA["parameters"]["properties"]
+        self.assertIn("model", props)
+        task_props = props["tasks"]["items"]["properties"]
+        self.assertIn("model", task_props)
+
+    def test_top_level_model_override_single_task(self):
+        """Top-level model param overrides delegation config model."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            delegate_task(
+                goal="reason about concurrency",
+                model="deepseek-v4-pro:cloud",
+                parent_agent=parent,
+            )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+
+    def test_per_task_model_overrides_delegation_config(self):
+        """Per-task model beats delegation config model."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "heavy reasoning", "model": "deepseek-v4-pro:cloud"}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+
+    def test_no_per_task_model_falls_back_to_delegation_config(self):
+        """Without per-task model, delegation config model is used."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "code review"}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "kimi-k2.7-code:cloud")
+
+    def test_empty_model_string_treated_as_unset(self):
+        """Empty model string falls back to delegation config model."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "task", "model": ""}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "kimi-k2.7-code:cloud")
+
+    def test_whitespace_only_model_string_treated_as_unset(self):
+        """Whitespace-only model string falls back to delegation config model."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "task", "model": "   "}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "kimi-k2.7-code:cloud")
+
+    def test_batch_mixed_models(self):
+        """Batch: each task gets its own model, default when absent."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mock_child
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[
+                        {"goal": "code review", "model": "kimi-k2.7-code:cloud"},
+                        {"goal": "heavy reasoning", "model": "deepseek-v4-pro:cloud"},
+                        {"goal": "default task"},
+                    ],
+                    parent_agent=parent,
+                )
+        self.assertEqual(call_models[0], "kimi-k2.7-code:cloud")
+        self.assertEqual(call_models[1], "deepseek-v4-pro:cloud")
+        self.assertEqual(call_models[2], "kimi-k2.7-code:cloud")
+
+    def test_model_only_no_provider_inherits_parent_credentials(self):
+        """Per-task model override with no delegation.provider configured
+        uses the model name but inherits all credentials from the parent."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "task", "model": "deepseek-v4-flash:cloud"}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        # Model is overridden per-task
+        self.assertEqual(kwargs["model"], "deepseek-v4-flash:cloud")
+        # But credentials come from the parent (no provider configured)
+        self.assertEqual(kwargs["provider"], parent.provider)
+        self.assertEqual(kwargs["base_url"], parent.base_url)
+
+    def test_top_level_model_ignored_when_tasks_array_provided(self):
+        """Top-level model is ignored in batch mode; per-task model or config
+        fallback is used instead."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mc = MagicMock()
+            mc.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mc
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    model="top-level-model",
+                    tasks=[
+                        {"goal": "g1"},
+                        {"goal": "g2", "model": "per-task-model"},
+                    ],
+                    parent_agent=parent,
+                )
+        self.assertEqual(call_models[0], "kimi-k2.7-code:cloud")  # config fallback
+        self.assertEqual(call_models[1], "per-task-model")  # per-task override
+        self.assertNotIn("top-level-model", call_models)
+
+    def test_none_model_value_treated_as_unset(self):
+        """Explicit None model value falls back to delegation config."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "t", "model": None}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "kimi-k2.7-code:cloud")
+
+    def test_model_override_falls_back_to_parent_when_config_empty(self):
+        """When delegation.model is unset and no per-task model, inherits parent."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mc = MagicMock()
+            mc.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mc
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "t"}],  # no model field
+                    parent_agent=parent,
+                )
+        # No config model, no per-task model → inherits parent model
+        self.assertEqual(call_models[0], parent.model)
+
+    def test_strips_whitespace_from_model_name(self):
+        """Leading/trailing whitespace in model name is stripped before use."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mc = MagicMock()
+            mc.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mc
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "t", "model": "  deepseek-v4-pro:cloud  "}],
+                    parent_agent=parent,
+                )
+        self.assertEqual(call_models[0], "deepseek-v4-pro:cloud")
+
+    def test_schema_model_description_mentions_override(self):
+        """Dynamic schema descriptions advertise the model override feature."""
+        from tools.delegate_tool import (
+            _build_top_level_description,
+            _build_tasks_param_description,
+        )
+        top_desc = _build_top_level_description()
+        self.assertIn("model", top_desc.lower())
+        self.assertIn("override", top_desc.lower())
+
+        tasks_desc = _build_tasks_param_description()
+        self.assertIn("model", tasks_desc.lower())
+
+    def test_background_model_override_passes_to_async_dispatch(self):
+        """background=true forwards per-task model to async dispatch, not config default."""
+        parent = _make_mock_parent(depth=0)
+
+        with patch("tools.delegate_tool._load_config") as mock_cfg:
+            mock_cfg.return_value = {
+                "model": "kimi-k2.7-code:cloud",
+                "provider": "",
+                "max_iterations": 50,
+            }
+            with patch("tools.async_delegation.dispatch_async_delegation") as mock_dispatch:
+                mock_dispatch.return_value = {
+                    "status": "dispatched",
+                    "delegation_id": "async-123",
+                }
+                with patch("tools.delegate_tool._build_child_agent") as mock_build:
+                    mock_child = MagicMock()
+                    mock_child._subagent_id = "sa-0-abc"
+                    mock_child._delegate_saved_tool_names = []
+                    mock_child._credential_pool = None
+                    mock_build.return_value = mock_child
+
+                    delegate_task(
+                        goal="background heavy reasoning",
+                        model="deepseek-v4-pro:cloud",
+                        background=True,
+                        parent_agent=parent,
+                    )
+
+        _, captured = mock_dispatch.call_args
+        self.assertEqual(captured.get("model"), "deepseek-v4-pro:cloud")
+        self.assertNotEqual(captured.get("model"), "kimi-k2.7-code:cloud")
+
+    def test_acp_transport_preserves_per_task_model(self):
+        """ACP forced provider does not clobber per-task model override."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "acp reasoning", "model": "deepseek-v4-pro:cloud"}],
+                    parent_agent=parent,
+                    acp_command="copilot",
+                    acp_args=["--acp", "--stdio"],
+                )
+
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+
+    def test_orchestrator_role_preserves_per_task_model(self):
+        """role='orchestrator' + per-task model keeps the override and delegation toolset."""
+        parent = _make_mock_parent(depth=0)
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                    "max_spawn_depth": 2,
+                }
+                delegate_task(
+                    tasks=[{
+                        "goal": "orchestrate workers",
+                        "role": "orchestrator",
+                        "model": "deepseek-v4-pro:cloud",
+                    }],
+                    parent_agent=parent,
+                )
+
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+        enabled = kwargs.get("enabled_toolsets", [])
+        self.assertIn("delegation", enabled)
+
+    def test_toolset_intersection_preserves_per_task_model(self):
+        """Per-task toolsets intersected with parent keep per-task model."""
+        parent = _make_mock_parent(depth=0)
+        parent.enabled_toolsets = ["file", "terminal"]
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{
+                        "goal": "limited toolset task",
+                        "toolsets": ["file", "web"],
+                        "model": "deepseek-v4-pro:cloud",
+                    }],
+                    parent_agent=parent,
+                )
+
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+        enabled = kwargs.get("enabled_toolsets", [])
+        self.assertIn("file", enabled)
+        self.assertNotIn("web", enabled)
+
+    def test_result_metadata_reports_overridden_model(self):
+        """Result entry's 'model' reflects the child's overridden model."""
+        parent = _make_mock_parent(depth=0)
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.model = "deepseek-v4-pro:cloud"
+            mock_child.run_conversation.return_value = {
+                "final_response": "done",
+                "completed": True,
+                "api_calls": 1,
+                "messages": [],
+            }
+            mock_child.session_prompt_tokens = 10
+            mock_child.session_completion_tokens = 20
+            mock_child._delegate_saved_tool_names = []
+            mock_child._credential_pool = None
+            mock_child.get_activity_summary.return_value = {}
+            MockAgent.return_value = mock_child
+
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                result = delegate_task(
+                    tasks=[{"goal": "report model", "model": "deepseek-v4-pro:cloud"}],
+                    parent_agent=parent,
+                )
+
+        parsed = json.loads(result)
+        self.assertEqual(parsed["results"][0]["model"], "deepseek-v4-pro:cloud")
+
+    def test_non_string_model_value_degrades_safely(self):
+        """Non-string model values (bool, int, list) are coerced to str, not crashed."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mc = MagicMock()
+            mc.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mc
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                # bool: True is truthy, str(True) = "True" — not a valid model,
+                # but it shouldn't crash. It'll be passed as "True" and the
+                # runtime will error on the model name. The key is no AttributeError.
+                delegate_task(
+                    tasks=[{"goal": "t", "model": True}],
+                    parent_agent=parent,
+                )
+        # str(True).strip() = "True" which is truthy, so it's used (not config fallback)
+        self.assertEqual(call_models[0], "True")
+
+        # int: 0 is falsy, so `0 or ""` = "", which falls back to config model
+        call_models.clear()
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "t", "model": 0}],
+                    parent_agent=parent,
+                )
+        # 0 is falsy → falls back to config model (safe — no crash)
+        self.assertEqual(call_models[0], "kimi-k2.7-code:cloud")
+
+    def test_per_task_model_with_delegation_provider_uses_resolved_credentials(self):
+        """Per-task model overrides config model but keeps resolved provider credentials."""
+        parent = _make_mock_parent(depth=0)
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "config-model",
+                    "provider": "openrouter",
+                    "max_iterations": 50,
+                }
+                with patch("tools.delegate_tool._resolve_delegation_credentials") as mock_creds:
+                    mock_creds.return_value = {
+                        "model": "config-model",
+                        "provider": "openrouter",
+                        "base_url": "https://openrouter.ai/api/v1",
+                        "api_key": "or-key",
+                        "api_mode": "chat_completions",
+                    }
+                    delegate_task(
+                        tasks=[{"goal": "g", "model": "per-task-model"}],
+                        parent_agent=parent,
+                    )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "per-task-model")
+        self.assertEqual(kwargs["provider"], "openrouter")
+        self.assertEqual(kwargs["base_url"], "https://openrouter.ai/api/v1")
+        self.assertEqual(kwargs["api_key"], "or-key")
+
+    def test_per_task_model_preserves_parent_fallback_chain(self):
+        """Per-task model override does not drop the parent's fallback chain."""
+        parent = _make_mock_parent(depth=0)
+        fallback_entry = {"provider": "ollama-glm", "model": "kimi-k2.7-code:cloud", "api_key": "ollama"}
+        parent._fallback_chain = [fallback_entry]
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            mock_child = MagicMock()
+            mock_child.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            MockAgent.return_value = mock_child
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks=[{"goal": "g", "model": "deepseek-v4-pro:cloud"}],
+                    parent_agent=parent,
+                )
+        _, kwargs = MockAgent.call_args
+        self.assertEqual(kwargs["model"], "deepseek-v4-pro:cloud")
+        self.assertEqual(kwargs["fallback_model"], [fallback_entry])
+
+    def test_json_string_tasks_with_per_task_model(self):
+        """JSON-string tasks array with per-task model fields are parsed correctly."""
+        parent = _make_mock_parent(depth=0)
+        call_models = []
+
+        def make_mock_agent(*args, **kwargs):
+            call_models.append(kwargs.get("model"))
+            mc = MagicMock()
+            mc.run_conversation.return_value = {
+                "final_response": "done", "completed": True, "api_calls": 1
+            }
+            return mc
+
+        with patch("run_agent.AIAgent") as MockAgent:
+            MockAgent.side_effect = make_mock_agent
+            with patch("tools.delegate_tool._load_config") as mock_cfg:
+                mock_cfg.return_value = {
+                    "model": "kimi-k2.7-code:cloud",
+                    "provider": "",
+                    "max_iterations": 50,
+                }
+                delegate_task(
+                    tasks='[{"goal":"g1","model":"deepseek-v4-pro:cloud"},{"goal":"g2"}]',
+                    parent_agent=parent,
+                )
+        self.assertEqual(call_models[0], "deepseek-v4-pro:cloud")
+        self.assertEqual(call_models[1], "kimi-k2.7-code:cloud")
+
+    def test_background_with_multiple_tasks_and_model_returns_error(self):
+        """background=True with tasks array (batch) is rejected even with model override."""
+        parent = _make_mock_parent(depth=0)
+        result = delegate_task(
+            background=True,
+            model="deepseek-v4-pro:cloud",
+            tasks=[{"goal": "a"}, {"goal": "b"}],
+            parent_agent=parent,
+        )
+        parsed = json.loads(result)
+        self.assertIn("error", parsed)
+        self.assertIn("single-task", parsed["error"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()
