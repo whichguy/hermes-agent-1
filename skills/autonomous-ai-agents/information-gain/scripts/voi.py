@@ -144,6 +144,36 @@ def score_record(rec):
     return rec
 
 
+def score_breakdown(rec):
+    """Return the arithmetic behind a question's value, for 'show your work' output.
+
+    Pure: reads rec['answers'] ({prob, delta_plan, stakes}) and rec['derivable_prob'].
+    `u`, `evsi`, and `value` come from the same canonical functions as score_record,
+    so the breakdown never drifts from the real score; the per-answer `evsi_terms`
+    are the P·Δplan·stakes contributions shown for explanation.
+    """
+    answers = rec.get("answers") or []
+    raw_probs = [a.get("prob", 0.0) for a in answers]
+    probs = normalize_probs(raw_probs)
+    ent = normalized_entropy(raw_probs)
+    derivable = clamp01(rec.get("derivable_prob", 0.0))
+    u = uncertainty(answers, derivable)
+    terms = []
+    for p, a in zip(probs, answers):
+        dp, st = clamp01(a.get("delta_plan", 0.0)), clamp01(a.get("stakes", 0.0))
+        terms.append({"answer": a.get("answer", ""), "p": round(p, 4),
+                      "delta_plan": dp, "stakes": st, "term": round(p * dp * st, 4)})
+    e = evsi(answers)
+    return {
+        "entropy": round(ent, 4),
+        "derivable_prob": derivable,
+        "u": round(u, 4),
+        "evsi_terms": terms,
+        "evsi": round(e, 4),
+        "value": round(question_value(u, e), 4),
+    }
+
+
 # ── classification & defaults ────────────────────────────────────────────────
 
 

@@ -113,21 +113,35 @@ def extract_json(text):
     raise ValueError("no parseable JSON in model output")
 
 
-def _call_json(model, prompt, timeout, num_predict, retries=1):
-    """raw_chat + extract_json with one retry that nudges toward strict JSON."""
+def _call_json(model, prompt, timeout, num_predict, retries=1, sink=None):
+    """raw_chat + extract_json with one retry that nudges toward strict JSON.
+
+    If `sink` is a list, append one trace dict (model / prompt / raw output /
+    elapsed / attempts / error) for 'show your work' diagnostics. No-op otherwise.
+    """
     last_err = None
+    last_raw = ""
+    last_elapsed = None
     for attempt in range(retries + 1):
         content = prompt if attempt == 0 else (
             prompt + "\n\nReturn ONLY valid JSON. No prose, no markdown fences."
         )
         r = raw_chat(model, content, timeout=timeout, num_predict=num_predict)
+        last_raw, last_elapsed = r["content"], r["elapsed"]
         if r["error"]:
             last_err = r["error"]
             continue
         try:
-            return extract_json(r["content"]), None
+            parsed = extract_json(r["content"])
+            if sink is not None:
+                sink.append({"model": model, "prompt": prompt, "raw": r["content"],
+                             "elapsed": r["elapsed"], "attempts": attempt + 1, "error": None})
+            return parsed, None
         except ValueError as e:
             last_err = f"{e} (raw: {r['content'][:160]!r})"
+    if sink is not None:
+        sink.append({"model": model, "prompt": prompt, "raw": last_raw,
+                     "elapsed": last_elapsed, "attempts": retries + 1, "error": last_err})
     return None, last_err
 
 
@@ -227,10 +241,10 @@ def judge_prompt(problem, framing, baseline_plan, question, answers):
 # ── stages ───────────────────────────────────────────────────────────────────
 
 
-def frame_and_plan(problem, model, timeout=180):
+def frame_and_plan(problem, model, timeout=180, sink=None):
     """Stage 0. Returns (framing_dict, error). framing has goal/decision/
     success_criteria/baseline_plan (always a dict, even on partial failure)."""
-    obj, err = _call_json(model, frame_prompt(problem), timeout, num_predict=700)
+    obj, err = _call_json(model, frame_prompt(problem), timeout, num_predict=700, sink=sink)
     if not isinstance(obj, dict):
         return ({"goal": "", "decision": "", "success_criteria": [],
                  "baseline_plan": ""}, err or "framing returned non-object")
@@ -241,10 +255,10 @@ def frame_and_plan(problem, model, timeout=180):
     return obj, None
 
 
-def generate_questions(problem, framing, model, n, avoid=None, timeout=180):
+def generate_questions(problem, framing, model, n, avoid=None, timeout=180, sink=None):
     """Stage 1. Returns (list_of_records, error). Each record: question/type/why/target."""
     obj, err = _call_json(model, questions_prompt(problem, framing, n, avoid),
-                          timeout, num_predict=900)
+                          timeout, num_predict=900, sink=sink)
     items = []
     if isinstance(obj, dict):
         items = obj.get("questions") or []
@@ -266,10 +280,11 @@ def generate_questions(problem, framing, model, n, avoid=None, timeout=180):
     return out, (None if out else (err or "no questions generated"))
 
 
-def project_answers(problem, framing, rec, model, m, timeout=120):
+def project_answers(problem, framing, rec, model, m, timeout=120, capture=False):
     """Stage 2 (single question). Mutates rec with answers[] + derivable_prob."""
+    sink = [] if capture else None
     obj, err = _call_json(model, answers_prompt(problem, framing, rec["question"], m),
-                          timeout, num_predict=600)
+                          timeout, num_predict=600, sink=sink)
     answers = []
     derivable = 0.0
     if isinstance(obj, dict):
@@ -282,17 +297,20 @@ def project_answers(problem, framing, rec, model, m, timeout=120):
     rec["derivable_prob"] = derivable
     if err:
         rec["error"] = err
+    if capture and sink:
+        rec.setdefault("_trace", {})["project"] = sink[0]
     return rec
 
 
-def judge_plan_change(problem, framing, baseline_plan, rec, model, timeout=150):
+def judge_plan_change(problem, framing, baseline_plan, rec, model, timeout=150, capture=False):
     """Stage 3 (single question). Adds delta_plan + stakes to each answer in rec."""
     answers = rec.get("answers") or []
     if not answers:
         return rec
+    sink = [] if capture else None
     obj, err = _call_json(
         model, judge_prompt(problem, framing, baseline_plan, rec["question"], answers),
-        timeout, num_predict=500,
+        timeout, num_predict=500, sink=sink,
     )
     judged = obj.get("answers") if isinstance(obj, dict) else (
         obj if isinstance(obj, list) else [])
@@ -303,6 +321,8 @@ def judge_plan_change(problem, framing, baseline_plan, rec, model, timeout=150):
         a["stakes"] = j.get("stakes", 0.0)
     if err:
         rec["error"] = err
+    if capture and sink:
+        rec.setdefault("_trace", {})["judge"] = sink[0]
     return rec
 
 
@@ -327,12 +347,14 @@ def _parallel(fn, items, max_workers=None):
     return [result_by_id[id(it)] for it in items]
 
 
-def project_answers_batch(problem, framing, recs, model, m, timeout=120):
+def project_answers_batch(problem, framing, recs, model, m, timeout=120, capture=False):
     return _parallel(
-        lambda r: project_answers(problem, framing, r, model, m, timeout), recs)
+        lambda r: project_answers(problem, framing, r, model, m, timeout, capture), recs)
 
 
-def judge_plan_change_batch(problem, framing, baseline_plan, recs, model, timeout=150):
+def judge_plan_change_batch(problem, framing, baseline_plan, recs, model, timeout=150,
+                            capture=False):
     return _parallel(
-        lambda r: judge_plan_change(problem, framing, baseline_plan, r, model, timeout),
+        lambda r: judge_plan_change(problem, framing, baseline_plan, r, model, timeout,
+                                    capture),
         recs)

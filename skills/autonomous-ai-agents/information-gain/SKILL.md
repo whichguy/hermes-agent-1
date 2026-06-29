@@ -82,6 +82,11 @@ python3 ${HERMES_SKILL_DIR}/scripts/infogain.py -p "Add SSO to the admin portal"
 # See the exact stage prompts without any model calls
 python3 ${HERMES_SKILL_DIR}/scripts/infogain.py "<problem>" --dry-run
 
+# Show your work: every stage's prompt + raw model output + the per-question
+# scoring arithmetic (U, the P·Δplan·stakes terms, √(U·EVSI)) + the loop decisions.
+# Invaluable for comparing models or scaffolding a weaker one. Add --json for structured.
+python3 ${HERMES_SKILL_DIR}/scripts/infogain.py "<problem>" --trace
+
 # Write to a file; quiet stderr
 python3 ${HERMES_SKILL_DIR}/scripts/infogain.py "<problem>" -o /tmp/infogain.md --quiet
 ```

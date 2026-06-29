@@ -90,6 +90,18 @@ class TestVoiMath(unittest.TestCase):
         self.assertTrue(rec["gated_out"])
         self.assertEqual(rec["value"], 0.0)
 
+    def test_score_breakdown_matches_and_explains(self):
+        rec = {"answers": [_answer(0.6, 0.8, 0.7), _answer(0.4, 0.2, 0.3)],
+               "derivable_prob": 0.1}
+        voi.score_record(rec)
+        b = voi.score_breakdown(rec)
+        # breakdown reproduces the canonical score, never drifts
+        self.assertAlmostEqual(b["u"], rec["u"], places=4)
+        self.assertAlmostEqual(b["value"], rec["value"], places=3)
+        # per-answer EVSI terms sum to EVSI
+        self.assertAlmostEqual(sum(t["term"] for t in b["evsi_terms"]), b["evsi"], places=3)
+        self.assertEqual(len(b["evsi_terms"]), 2)
+
 
 class TestSimilarityAndSelection(unittest.TestCase):
     def test_similarity_same_target(self):
@@ -219,8 +231,8 @@ class TestOrchestrationMocked(unittest.TestCase):
                                               "success_criteria": [], "baseline_plan": "p"}, None)), \
              mock.patch.object(pipeline, "generate_questions",
                                side_effect=lambda *a, **k: (self._fake_round(6), None)), \
-             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a: recs), \
-             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a: recs):
+             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a, **k: recs):
             result = infogain.run("vague problem", cfg)
         self.assertEqual(result["rounds_used"], 1)
         self.assertGreaterEqual(len(result["bucket"]), cfg["target_bucket_size"])
@@ -235,8 +247,8 @@ class TestOrchestrationMocked(unittest.TestCase):
                                               "baseline_plan": "p"}, None)), \
              mock.patch.object(pipeline, "generate_questions",
                                side_effect=lambda *a, **k: (self._fake_round(1, base_target="solo"), None)), \
-             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a: recs), \
-             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a: recs):
+             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a, **k: recs):
             result = infogain.run("nearly specified", cfg)
         self.assertFalse(result["min_met"])
         md = infogain.render_markdown(result)
@@ -250,13 +262,35 @@ class TestOrchestrationMocked(unittest.TestCase):
                                               "baseline_plan": "p"}, None)), \
              mock.patch.object(pipeline, "generate_questions",
                                side_effect=lambda *a, **k: (self._fake_round(4), None)), \
-             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a: recs), \
-             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a: recs):
+             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a, **k: recs):
             result = infogain.run("p", cfg)
         md = infogain.render_markdown(result)
         self.assertIn("Information-Gain Analysis", md)
         self.assertIn("Pre-answer these", md)
         self.assertIn("value of information", md)
+
+    def test_trace_captures_show_your_work(self):
+        cfg = self._cfg(max_rounds=1, questions_per_round=4, target_bucket_size=2,
+                        min_bucket_size=1)
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d",
+                                              "success_criteria": [], "baseline_plan": "p"}, None)), \
+             mock.patch.object(pipeline, "generate_questions",
+                               side_effect=lambda *a, **k: (self._fake_round(4), None)), \
+             mock.patch.object(pipeline, "project_answers_batch", side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a, **k: recs):
+            result = infogain.run("p", cfg, trace=True)
+        self.assertIn("trace", result)
+        tr = result["trace"]
+        self.assertIn("models", tr)
+        self.assertTrue(tr["rounds"])
+        q0 = tr["rounds"][0]["questions"][0]
+        self.assertIn("breakdown", q0)
+        self.assertIn("evsi_terms", q0["breakdown"])
+        md = infogain.render_trace(result)
+        self.assertIn("show your work", md)
+        self.assertIn("EVSI = Σ", md)
 
 
 # ── live (real Ollama) ────────────────────────────────────────────────────────

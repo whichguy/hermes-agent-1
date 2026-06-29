@@ -67,8 +67,13 @@ def _env_default(key):
 # ── orchestration ─────────────────────────────────────────────────────────────
 
 
-def run(problem, cfg, progress=None):
-    """Run the full bucket-fill loop. Returns a result dict (see keys below)."""
+def run(problem, cfg, progress=None, trace=False):
+    """Run the full bucket-fill loop. Returns a result dict (see keys below).
+
+    When trace=True, result['trace'] captures a 'show your work' record: each
+    stage's prompt + raw model output, the per-question scoring arithmetic, and
+    the per-round selection / stop decisions.
+    """
     def log(msg):
         if progress:
             progress(msg)
@@ -79,8 +84,14 @@ def run(problem, cfg, progress=None):
     judge_model = resolve_alias(cfg["value_judge_model"])
 
     log(f"framing problem + baseline plan via {plan_model} ...")
-    framing, ferr = pipeline.frame_and_plan(problem, plan_model, cfg["plan_timeout"])
+    framing_sink = [] if trace else None
+    framing, ferr = pipeline.frame_and_plan(problem, plan_model, cfg["plan_timeout"],
+                                            sink=framing_sink)
     baseline_plan = framing.get("baseline_plan", "")
+    trace_obj = ({"models": {"plan": plan_model, "question_gen": qg_model,
+                             "answer": ans_model, "value_judge": judge_model},
+                  "framing": (framing_sink[0] if framing_sink else None),
+                  "rounds": []} if trace else None)
 
     seen, scored_all = [], []
     rounds_used = 0
@@ -89,22 +100,31 @@ def run(problem, cfg, progress=None):
         avoid = [r["question"] for r in seen]
         log(f"round {rounds_used}: generating {cfg['questions_per_round']} "
             f"questions via {qg_model} ...")
+        gen_sink = [] if trace else None
         new_qs, _ = pipeline.generate_questions(
             problem, framing, qg_model, cfg["questions_per_round"], avoid,
-            cfg["gen_timeout"])
+            cfg["gen_timeout"], sink=gen_sink)
+        dropped = [q["question"] for q in new_qs if voi.is_duplicate(q, seen)]
         fresh = [q for q in new_qs if not voi.is_duplicate(q, seen)]
         seen.extend(fresh)
         if not fresh:
             log("round produced no new questions; stopping.")
+            if trace:
+                trace_obj["rounds"].append({
+                    "round": rounds_used,
+                    "generation": (gen_sink[0] if gen_sink else None),
+                    "dropped_as_duplicate": dropped, "questions": [],
+                    "stop_reason": "no new questions"})
             break
 
         log(f"round {rounds_used}: projecting answers ({ans_model}) + "
             f"judging plan-change ({judge_model}) for {len(fresh)} questions ...")
         fresh = pipeline.project_answers_batch(
             problem, framing, fresh, ans_model, cfg["answers_per_question"],
-            cfg["answer_timeout"])
+            cfg["answer_timeout"], capture=trace)
         fresh = pipeline.judge_plan_change_batch(
-            problem, framing, baseline_plan, fresh, judge_model, cfg["judge_timeout"])
+            problem, framing, baseline_plan, fresh, judge_model, cfg["judge_timeout"],
+            capture=trace)
         for r in fresh:
             voi.score_record(r)
         scored_all.extend(fresh)
@@ -117,11 +137,27 @@ def run(problem, cfg, progress=None):
         log(f"round {rounds_used}: bucket={len(bucket)} "
             f"(target {cfg['target_bucket_size']}), best fresh value={best_fresh:.2f}")
 
+        stop = None
         if len(bucket) >= cfg["target_bucket_size"]:
-            log("target bucket reached; stopping.")
-            break
-        if len(bucket) >= cfg["min_bucket_size"] and best_fresh < cfg["refill_floor"]:
-            log("min bucket reached and fresh candidates below refill floor; stopping.")
+            stop = f"target bucket ({cfg['target_bucket_size']}) reached"
+        elif len(bucket) >= cfg["min_bucket_size"] and best_fresh < cfg["refill_floor"]:
+            stop = (f"min bucket ({cfg['min_bucket_size']}) reached and best fresh "
+                    f"{best_fresh:.2f} < refill_floor ({cfg['refill_floor']})")
+
+        if trace:
+            trace_obj["rounds"].append({
+                "round": rounds_used,
+                "generation": (gen_sink[0] if gen_sink else None),
+                "dropped_as_duplicate": dropped,
+                "questions": [_trace_question(r) for r in fresh],
+                "bucket_after_round": len(bucket),
+                "best_fresh_value": round(best_fresh, 4),
+                "stop_reason": stop or ("max_rounds reached"
+                                        if rounds_used >= cfg["max_rounds"] else "continue"),
+            })
+
+        if stop is not None:
+            log(stop + "; stopping.")
             break
 
     bucket, discarded = voi.rank_and_select(
@@ -129,7 +165,7 @@ def run(problem, cfg, progress=None):
         pre_answer_threshold=cfg["pre_answer_threshold"],
         hard_cap=cfg["hard_cap"], mmr_lambda=cfg["mmr_lambda"])
 
-    return {
+    result = {
         "problem": problem,
         "framing": framing,
         "framing_error": ferr,
@@ -140,6 +176,29 @@ def run(problem, cfg, progress=None):
         "discarded_count": len(discarded),
         "min_met": len(bucket) >= cfg["min_bucket_size"],
         "pre_answer": [r for r in bucket if r.get("recommendation") == "PRE_ANSWER"],
+    }
+    if trace:
+        result["trace"] = trace_obj
+    return result
+
+
+def _trace_question(r):
+    """Compact per-question trace: inputs, the captured model calls, and the math."""
+    return {
+        "question": r.get("question"),
+        "target": r.get("target"),
+        "type": r.get("type"),
+        "why": r.get("why"),
+        "derivable_prob": r.get("derivable_prob"),
+        "answers": [{"answer": a.get("answer"), "prob": a.get("prob"),
+                     "delta_plan": a.get("delta_plan"), "stakes": a.get("stakes")}
+                    for a in (r.get("answers") or [])],
+        "breakdown": voi.score_breakdown(r),
+        "gated_out": r.get("gated_out"),
+        "value": r.get("value"),
+        "recommendation": r.get("recommendation"),
+        "answers_call": (r.get("_trace") or {}).get("project"),
+        "judge_call": (r.get("_trace") or {}).get("judge"),
     }
 
 
@@ -243,6 +302,99 @@ def render_markdown(result):
     return out
 
 
+def _clip(s, n=800):
+    s = s or ""
+    return s if len(s) <= n else s[:n] + f"\n…[+{len(s) - n} more chars]"
+
+
+def _render_trace_question(q):
+    b = q["breakdown"]
+    lines = [f"\n#### Q: {q['question']}",
+             f"_resolves: {q.get('target') or '—'} · type: {q.get('type') or '—'}_  ",
+             f"_why: {q.get('why', '')}_\n",
+             "| projected answer | P | Δplan | stakes | P·Δ·stakes |",
+             "|---|---:|---:|---:|---:|"]
+    for t in b["evsi_terms"]:
+        lines.append(f"| {str(t['answer'])[:64]} | {t['p']:.2f} | {t['delta_plan']:.2f} "
+                     f"| {t['stakes']:.2f} | {t['term']:.3f} |")
+    ev = " + ".join(f"{t['term']:.3f}" for t in b["evsi_terms"]) or "0"
+    rec = q.get("recommendation")
+    if q.get("gated_out"):
+        decision = "GATED OUT — discarded (no reducible uncertainty, or no expected plan-change)"
+    elif rec in ("PRE_ANSWER", "ASSUME_DEFAULT"):
+        decision = f"KEPT → {rec}"
+    elif rec == "SKIP":
+        decision = "discarded — value below the discard threshold"
+    elif rec == "REDUNDANT":
+        decision = "discarded — redundant with a higher-value question (same target)"
+    elif rec == "OVERFLOW":
+        decision = "discarded — valuable but beyond the bucket cap"
+    else:
+        decision = rec or "—"
+    lines += [
+        f"\nderivable_prob = {b['derivable_prob']:.2f}\n",
+        "**scoring (show your work):**  ",
+        f"- U = entropy {b['entropy']:.2f} × (1 − derivable {b['derivable_prob']:.2f}) "
+        f"= **{b['u']:.3f}**  ",
+        f"- EVSI = Σ P·Δplan·stakes = {ev} = **{b['evsi']:.3f}**  ",
+        f"- value = √(U × EVSI) = √({b['u']:.3f} × {b['evsi']:.3f}) = **{b['value']:.3f}**  ",
+        f"- decision: **{decision}**\n",
+    ]
+    return "\n".join(lines)
+
+
+def _render_bucket_table(bucket):
+    rows = ["| # | value | rec | question | resolves |",
+            "|---|------:|-----|----------|----------|"]
+    for i, r in enumerate(bucket):
+        rows.append(f"| {i + 1} | {r['value']:.2f} | {r.get('recommendation', '')} | "
+                    f"{r['question']} | {r.get('target', '') or '—'} |")
+    return "\n".join(rows)
+
+
+def render_trace(result):
+    """A 'show your work' document: prompts, raw model output, and scoring arithmetic."""
+    t = result.get("trace")
+    if not t:
+        return "No trace captured — run with --trace."
+    fr = result["framing"]
+    m = t["models"]
+    out = ["# Information-Gain — show your work\n",
+           f"**Problem:** {result['problem']}\n",
+           f"**Models:** plan/gen=`{m['question_gen']}` · answers=`{m['answer']}` · "
+           f"judge=`{m['value_judge']}`\n",
+           "\n## Stage 0 — frame the problem + baseline plan\n"]
+    f = t.get("framing") or {}
+    out += [
+        "**Prompt sent:**\n```\n" + _clip(f.get("prompt", ""), 700) + "\n```",
+        "**Raw model output:**\n```\n" + _clip(f.get("raw", ""), 700) + "\n```",
+        f"**Parsed →**\n- goal: {fr.get('goal', '')}\n- decision: {fr.get('decision', '')}\n"
+        f"- baseline plan: {fr.get('baseline_plan', '')}\n",
+    ]
+    for rd in t["rounds"]:
+        out.append(f"\n## Round {rd['round']} — generate → project → judge → score\n")
+        g = rd.get("generation") or {}
+        out += [
+            f"### Stage 1 — generate questions (`{g.get('model', '?')}`)",
+            "**Prompt sent:**\n```\n" + _clip(g.get("prompt", ""), 650) + "\n```",
+            "**Raw model output:**\n```\n" + _clip(g.get("raw", ""), 900) + "\n```",
+        ]
+        if rd.get("dropped_as_duplicate"):
+            out.append("**Dropped as duplicate of an earlier round:** "
+                       + "; ".join(rd["dropped_as_duplicate"]))
+        if rd.get("questions"):
+            out.append("\n### Stages 2-4 — per question (answers → Δplan/stakes → score)")
+            for q in rd["questions"]:
+                out.append(_render_trace_question(q))
+        out.append(f"**Round {rd['round']} decision:** bucket now "
+                   f"{rd.get('bucket_after_round', '?')}, best fresh value "
+                   f"{rd.get('best_fresh_value', '?')} → **{rd.get('stop_reason', '?')}**\n")
+    out.append("\n## Final ranked bucket\n")
+    out.append(_render_bucket_table(result["bucket"]) if result["bucket"]
+               else "_empty — the problem is already well-specified._")
+    return "\n".join(out)
+
+
 def _dry_run(problem, cfg):
     framing_stub = {"goal": "<goal from stage 0>", "decision": "<decision from stage 0>"}
     q_stub = {"question": "<a candidate question>"}
@@ -273,6 +425,9 @@ def build_parser():
     p.add_argument("-p", "--problem", help="Problem statement (alternative to positional).")
     p.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     p.add_argument("--dry-run", action="store_true", help="Print stage prompts; make no model calls.")
+    p.add_argument("--trace", action="store_true",
+                   help="Show your work: capture every stage's prompt + raw model output and "
+                        "the per-question scoring arithmetic, then print the full trace.")
     p.add_argument("-o", "--output", help="Write the report to this file.")
     p.add_argument("--quiet", action="store_true", help="Suppress progress logging on stderr.")
     # tunable overrides
@@ -315,10 +470,12 @@ def main(argv=None):
         return 2
 
     progress = None if args.quiet else (lambda m: print(f"… {m}", file=sys.stderr, flush=True))
-    result = run(problem, cfg, progress=progress)
+    result = run(problem, cfg, progress=progress, trace=args.trace)
 
     if args.json:
         rendered = json.dumps(result, indent=2, default=str)
+    elif args.trace:
+        rendered = render_trace(result)
     else:
         rendered = render_markdown(result)
 
