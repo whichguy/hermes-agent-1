@@ -173,6 +173,33 @@ knowledge          0  0.90   0.05  0.01  0.05  0.08 100%       (explain-oauth: d
 **Implication for #21:** validate on the **agentic bank**, not life questions — and analyze **per
 regime** (a single pooled number would average three different mechanisms into mush).
 
+### Agentic realized calibration (the reversal)
+
+A realized-change run on the agentic domain (one prompt per regime — `add-auth`/`gmail-triage`/
+`research-ratelimit`, `--source all_scored`, n=54 answers / 18 questions) shows the **calibration is
+stronger here than on life, and — unlike life — EVSI/value predict the clean realized-change signal:**
+
+| | per-answer ρ(Δ, realized) | per-q EVSI vs realized_**change** | per-q value vs realized_change |
+|---|---|---|---|
+| LIFE | +0.39 | **−0.009** (null) | +0.11 |
+| AGENTIC | **+0.64** | **+0.70** | **+0.66** |
+
+Calibration curve monotone 0.16→0.26→0.48→0.76→0.98. The life-domain null was an artifact of the
+**compressed** life value distribution (no variance to predict); the target domain has real spread, so
+the formula discriminates. **This partially rehabilitates EVSI for the actual use case** — but with two
+honest qualifiers:
+- **Mostly between-regime.** The strength comes from correctly separating tasks (value/realized means:
+  ask-user 0.50/0.87, just-do-it 0.18/0.18, go-find-out 0.11/0.14 — monotone). **Within** a task the
+  ranking is positive but modest (avg per-prompt ρ ≈ 0.34). So the formula is excellent at *"which task
+  needs clarification at all"* and decent at *"which question within a task."*
+- **Stakes still unmeasured.** value-vs-realized-**change** (+0.66) is clean (no stakes), but the full
+  `EVSI = Σ P·Δ·stakes` still can't be validated without realized stakes (realized-EVSI +0.89 remains a
+  projected-stakes confound). n=18 / 3 prompts / 72% saturation — directional.
+
+Net verdict shift: **the Δ-half and the cross-task value ranking show real signal in the target domain
+(a clear improvement over the life-only read); the stakes-weighting and within-task ranking still ride
+on the powered, de-confounded #21.**
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it
