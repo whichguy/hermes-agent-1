@@ -54,6 +54,25 @@ def change_judge(prompt, baseline, new, model, timeout):
     return voi.clamp01(obj.get("change", 0.0)) if isinstance(obj, dict) else None
 
 
+def stakes_judge(prompt, baseline, new, model, timeout):
+    """0..1: realized STAKES — how CONSEQUENTIAL the difference is, independent of its size.
+
+    Measured separately from projected `stakes`, so realized EVSI (= realized_change ×
+    realized_stakes) breaks the projected-stakes confound that nullified the P1a "validation".
+    """
+    p = ("Two responses A and B answer the same prompt and differ. IGNORING how large the "
+         "difference is, rate how much it MATTERS for the user getting a good result — would a "
+         "knowledgeable user care which one they received? Use the FULL range:\n"
+         "  0.0 = wouldn't care, both serve the need equally well\n"
+         "  0.3 = mild preference for the better one\n"
+         "  0.6 = clearly wants the better one\n"
+         "  1.0 = the worse one fails their actual need\n\n"
+         f"PROMPT:\n{prompt}\n\nRESPONSE A:\n{baseline}\n\nRESPONSE B:\n{new}\n\n"
+         'First think in one short sentence, then return JSON: {"reason": "...", "stakes": 0.0}.')
+    obj, _ = pipeline._call_json(model, p, timeout, num_predict=200)
+    return voi.clamp01(obj.get("stakes", 0.0)) if isinstance(obj, dict) else None
+
+
 def run_prompt(pr, cfg, judge_model, max_answers, timeout, source="bucket"):
     result = infogain.run(pr["problem"], cfg)
     plan_model = pipeline.resolve_alias(cfg["plan_model"])
@@ -70,18 +89,22 @@ def run_prompt(pr, cfg, judge_model, max_answers, timeout, source="bucket"):
             new, _ = pipeline.frame_and_plan(pr["problem"], plan_model, timeout, evidence=[fact])
             new_resp = (new or {}).get("baseline_plan", "")
             realized = change_judge(pr["problem"], baseline, new_resp, judge_model, timeout)
+            r_stakes = stakes_judge(pr["problem"], baseline, new_resp, judge_model, timeout)
+            regret = None if (realized is None or r_stakes is None) else realized * r_stakes
             rows.append({
-                "prompt": pr["id"], "question": q["question"][:120],
+                "prompt": pr["id"], "cat": pr.get("cat"), "question": q["question"][:120],
                 "target": q.get("target"), "answer": (a.get("answer") or "")[:90],
                 "prob": round(voi.clamp01(a.get("prob", 0)), 3),
                 "projected_delta": round(voi.clamp01(a.get("delta_plan", 0)), 3),
                 "stakes": round(voi.clamp01(a.get("stakes", 0)), 3),
                 "realized_change": None if realized is None else round(realized, 3),
+                "realized_stakes": None if r_stakes is None else round(r_stakes, 3),
+                "realized_regret": None if regret is None else round(regret, 3),  # realized EVSI term
                 "q_u": round(q.get("u", 0), 3), "q_evsi": round(q.get("evsi", 0), 3),
                 "q_value": round(q.get("value", 0), 3),
             })
             print(f"    pair: {pr['id']} | Δproj={a.get('delta_plan')} realized={realized} "
-                  f"| {q['question'][:45]}", file=sys.stderr, flush=True)
+                  f"r_stakes={r_stakes} | {q['question'][:40]}", file=sys.stderr, flush=True)
     return rows, baseline
 
 

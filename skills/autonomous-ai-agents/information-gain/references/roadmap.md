@@ -4,6 +4,26 @@ Driven by the benchmark (`benchmark-findings.md`). Sequence is deliberate: **get
 before wrapping a loop around it.** Done first (cleanup): removed `answerability` (inert);
 benchmark + conclusions saved.
 
+## Revised plan (post-domain-learnings, 2026-06)
+
+The domain investigation (`evsi-validation-findings.md` §Domain sensitivity + Agentic realized
+calibration) changed the plan in five concrete ways:
+
+1. **Target domain, not life.** Validate and tune on the **agentic bank** (`testbank.BANK`), analyzed
+   **per regime** — *ask-the-user* / *go-find-out* / *just-do-it*. Life questions are a degenerate corner.
+2. **EVSI is partly rehabilitated.** On the target domain value/EVSI predict the *clean* realized-change
+   signal (+0.66/+0.70 vs life's null) — mostly between-regime. So the formula is **not** scrapped; it's
+   validated where it matters, pending the stakes half.
+3. **`U` stays.** It's alive in agentic (sd 0.26) and is the ask-vs-find-out discriminator. The life-only
+   "drop U" is dead. Freeze vindicated.
+4. **Rank-relative selection is now REQUIRED** (#23), not conditional — the absolute threshold mis-fires
+   across regimes (61% discarded).
+5. **Phase 2 seam is visible now.** The *go-find-out* regime (high `derivable_prob` → U-gate fires) is
+   exactly the grounded-research trigger the wrapper consumes — the skill already routes ask-vs-research.
+
+Still gated on a de-confounded, powered **#21** (realized-stakes judge + max-Δ competitor + per-regime
++ pooling). Formula stays **frozen** until then.
+
 ## Phase 1 — Validate (and if needed, fix) EVSI
 
 **Question:** does a high `value` actually predict a question whose answer improves the response?
@@ -66,9 +86,14 @@ selection to rank/relative (top-K, or ≥ X% of the round's best). **`U` is NOT 
 "inert" finding does not hold in the agentic domain (U sd 0.26; it discriminates ask-vs-find-out). The
 `√`-form / `U` question is re-opened for #21 on agentic data, not closed.
 
-**1.4 Elicitation (only if 1.1 says inputs are the weak link).** Replace absolute 0–1 Δ/stakes with
-**comparative/pairwise** judgments ("which answer would change the response more?") — models are far
-better at comparisons than at calibrated absolute numbers. Bigger effort; gated on evidence.
+**1.4 Comparative elicitation — now the PATH FORWARD for stakes (was conditional).** Building #21's
+de-confounding step proved absolute post-hoc **realized-stakes** judging is too fragile: a catastrophe
+anchor collapses (35/36 → 0.0), a graded anchor central-tendency-clusters (12/18 → 0.6). See
+`evsi-validation-findings.md` §"realized-stakes instrument". Fix: measure stakes **pairwise** —
+*"which of these two clarifications matters more for the outcome?"* — and rank via Bradley-Terry / Elo
+instead of brittle 0–1 ratings. Likely applies to **eliciting** projected Δ/stakes too (models compare
+better than they score). Until this lands, the **stakes-half of EVSI is unvalidated by instrument
+limitation, not by a negative result**; the Δ-half stands (agentic per-answer ρ 0.64).
 
 **Exit:** an EVSI we've shown predicts realized improvement (or a recalibrated one that does).
 

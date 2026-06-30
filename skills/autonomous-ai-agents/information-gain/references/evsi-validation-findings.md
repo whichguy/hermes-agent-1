@@ -200,6 +200,30 @@ Net verdict shift: **the Δ-half and the cross-task value ranking show real sign
 (a clear improvement over the life-only read); the stakes-weighting and within-task ranking still ride
 on the powered, de-confounded #21.**
 
+### The realized-stakes instrument is the hard part (→ go comparative)
+
+Building #21's de-confounding step surfaced a methodological wall. To break the projected-stakes
+confound we must measure realized **stakes** independently (`evals/validate_evsi.py::stakes_judge`,
+`analyze_validity.py`). An **absolute** post-hoc stakes judge proved too fragile:
+- **Catastrophe anchor** ("how materially worse… serious problems") → collapse: **35/36 rated 0.0**,
+  only the *compliance* question (genuinely legal-grade) got 1.0. Zero variance → de-confounded test
+  uninformative (value vs realized_regret ρ=+0.26, but realized_regret was ≈0 everywhere).
+- **Graded anchor** ("would a knowledgeable user care… full range") → variance returns (mean 0.62,
+  sd 0.15) and becomes distinct from realized_change, **but central-tendency clusters** (12/18 snap to
+  0.6). Better, still not discriminating.
+
+So the realized judges are fragile in **opposite** ways — change saturates at 0/1, stakes piles on the
+middle anchor. Note the *projected* deepseek stakes is sensibly graded (sd 0.26; auth 0.70 / scale 0.10
+/ compliance 0.95) — it's the post-hoc *measurement* of stakes that resists absolute rating.
+
+**Conclusion — promote comparative elicitation (1.4 / #24) from conditional to the path forward.**
+Models are far better at **relative** judgments than calibrated absolute numbers. The de-confounded
+study should measure realized stakes **pairwise** — *"for this prompt, which of these two clarifications
+matters more for the outcome?"* — yielding a ranking (Bradley-Terry / Elo) instead of brittle 0–1
+ratings. The same likely applies to *eliciting* projected stakes. Until then the **stakes-half of EVSI
+remains unvalidated by instrument limitation** (not by a negative result); the **Δ-half stands**
+(agentic per-answer ρ 0.64, value-vs-realized-change 0.66).
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it
