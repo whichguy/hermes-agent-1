@@ -54,6 +54,18 @@ exploration value = √(uncertainty × value-of-answering)
 > ~0.95 in 15/16 cells and reordering the ranking in 0/15 — because clarifying questions are almost
 > always answerable. It added a field + prompt complexity for no measured effect.
 
+> **Phase-1 validation (2026-06) — `U` inert, EVSI not-yet-validated.** The realized-vs-projected
+> study (`evsi-validation-findings.md`) found: (a) the **Δ component is directionally calibrated**
+> (per-answer ρ=0.39, cluster p=0.005); (b) **`U` is inert** — `√(U·EVSI)` ranks identically to
+> EVSI-only (0/40 within-prompt reorderings) and `U`-alone is anti-predictive → candidate for removal;
+> (c) the **full stakes-weighted EVSI is not-yet-validated**: it is null against the only clean signal
+> (realized response-change, ρ=−0.009), and its apparent +0.605 "validation" is a **stakes-reuse
+> confound** (the realized-EVSI target recycles projected stakes; partial-ρ\|stakes = −0.13);
+> (d) **max-Δ** is the best clean-signal predictor but marginal (p=0.064). *Caveat:* n=17 / 3 prompts,
+> and `U`'s range is compressed (0.725–0.984), so its inertness is unproven beyond this sample.
+> **Formula change is pending** a de-confounded, multi-prompt re-run (#21) that measures realized
+> *stakes* and registers max-Δ as a competitor; the wrapper build is gated on it.
+
 ## The evidence loop (how multi-step depth happens)
 
 The skill is a **stateless, report-only primitive**. To iterate:

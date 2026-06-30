@@ -11,6 +11,14 @@ The benchmark showed internal `value` and external quality can diverge (usaw: va
 0.20). The EVSI *structure* is sound; the suspect links are input estimates, threshold scale, and
 unproven validity.
 
+**Phase-1 results so far (2026-06) — see `evsi-validation-findings.md`.** P1a (calibration) + P1c
+(ablations) ran (`evals/validate_evsi.py` + `analyze_evsi.py`), reproduced + adversarially verified.
+Verdict: **Δ component directionally calibrated** (per-answer ρ=0.39, cluster p=0.005); **`U` inert**
+(0/40 within-prompt reorderings, anti-predictive alone); **full EVSI not-yet-validated** — null vs the
+clean realized-change signal (ρ=−0.009), and its +0.605 vs realized-EVSI is a **stakes-reuse confound**
+(partial-ρ|stakes = −0.13); **max-Δ** is the best clean predictor but marginal (p=0.064). n=17 / 3
+prompts → directional. **Consequence: gate the wrapper on a de-confounded #21; formula change pending.**
+
 **1.1 Use-relevant validity study (the core test).** For N prompts, produce three responses and
 judge them blind for relevance to the prompt:
 - `baseline` — respond with no clarification.
@@ -23,13 +31,26 @@ low-ranked ones, the rating isn't earning its place and we recalibrate/re-elicit
 spectrum (not just top-2 vs low-2) and plot **realized improvement vs question `value`** — the floor is
 where improvement flattens to ~0. Set the cap from the curve, don't guess it.
 
-**1.2 Post-hoc formula ablations (near-free).** We already store per-question components (U, P, Δ,
-stakes). Re-derive rankings under alternatives — EVSI-only (drop U), max-Δ vs P-weighted mean — and
-see which best matches "which questions actually improved the response" from 1.1. No new model calls.
+**Hard requirements added by Phase-1 (to break the confound P1c exposed):**
+- **Measure realized *stakes*, blind.** P1a/P1c only measured realized *change*; any "realized EVSI"
+  that reuses projected stakes is confounded (ρ=0.96 collinearity nullifies it). The blind judge must
+  rate the **importance/consequence** of the differences between responses, not just whether they
+  changed — so realized EVSI = realized-Δ × realized-stakes is computed without the predictor's inputs.
+- **Register `max-Δ` as a named competitor** alongside `√(U·EVSI)`, EVSI-only, U-only on the blind
+  realized-improvement axis (P1c made it the leading clean-signal predictor, p=0.064 — resolve it here).
+- **Pool across many more than 3 prompts**, with a **prompt-cluster bootstrap CI** (per-prompt n=5–6
+  needs near-perfect monotonicity to reach significance; pool the question-level unit instead).
 
-**1.3 Calibration → rank-relative (likely).** Absolute thresholds (0.40/0.60) are model-dependent
-(fast → everything PRE_ANSWER; deepseek → fewer). Switch selection to rank/relative (top-K, or
-≥ X% of the round's best). Small change, robust to model scale.
+**1.2 Post-hoc formula ablations — DONE (P1c).** Ran from stored components (no model calls). Result:
+**`U` inert** (`√(U·EVSI)` ≡ EVSI-only, 0/40 reorderings); **max-Δ** best vs the clean realized-change
+signal (+0.526) while EVSI/value are ≈0 there (the EVSI signal lives entirely in stakes-weighting,
+which 1.1 must validate de-confounded). See `evsi-validation-findings.md`.
+
+**1.3 Calibration → rank-relative (likely) + drop `U`.** Absolute thresholds (0.40/0.60) are
+model-dependent (fast → everything PRE_ANSWER; deepseek → fewer). Switch selection to rank/relative
+(top-K, or ≥ X% of the round's best). **Also fold in the P1c finding: drop the inert `U` factor**
+(ranking-neutral on the validation set; `√(U·EVSI)` collapses to a monotone transform of EVSI) — a
+simplification, pending confirmation it isn't a narrow-`U`-range artifact. Small change, robust to scale.
 
 **1.4 Elicitation (only if 1.1 says inputs are the weak link).** Replace absolute 0–1 Δ/stakes with
 **comparative/pairwise** judgments ("which answer would change the response more?") — models are far

@@ -67,5 +67,10 @@ This benchmark put our **internal `value`** next to an **external quality judgme
 time, and they **diverged** (e.g. usaw focus-fast: `value` 0.69 but adjudicated relevance 0.20). We
 have never validated that `value` predicts *realized* improvement to the response. The EVSI
 *structure* is sound; the suspect links are the **input estimates** (LLM Δ/stakes saturate),
-the **absolute-threshold scale** (model-dependent), and **unvalidated validity**. See
-`roadmap.md` (Phase 1) for the realized-vs-projected validation study.
+the **absolute-threshold scale** (model-dependent), and **unvalidated validity**.
+
+→ **Phase 1 ran this validation** — see `evsi-validation-findings.md`. Partial answer: the **Δ
+component is directionally calibrated** (ρ=0.39, cluster p=0.005), but the **full stakes-weighted
+EVSI is not-yet-validated** (null vs the clean realized-change signal; its only positive correlation
+is a stakes-reuse confound), and **`U` is inert** (0/40 reorderings). The wrapper is gated on a
+de-confounded re-run (`roadmap.md` Phase 1 / #21).
