@@ -292,7 +292,67 @@ runs below the floor.
 
 *Caveats:* n=105, mixed-domain, `realized_change` saturates at 0/1 (coarse); the de-confounded #21
 (pairwise stakes) gives the clean number. Breadth scan is generation-only (distinct targets, not value)
-— the value-saturation curve (scored) is the stronger but costlier confirmation, deferred.
+— the value-saturation curve (scored) is the stronger confirmation, now available via
+`saturation_scan.py --scored` (full pipeline per breadth: tracks max(value) + #candidates ≥ floor).
+
+**Scored confirmation (`--scored`, 5 prompts, breadth 1→4) — the high-value signal saturates at breadth
+≈2 while coverage doesn't.** `max(value)` per prompt is flat past ~2 draws (median value-knee = 2; avg
+Δmax_value per *added* sample = +0.046 / −0.029 / +0.038 — noise around zero), even though distinct
+targets keep climbing (+1.2 / +2.6 / +3.8 per sample) and the #candidates ≥ floor keeps growing (e.g.
+add-auth 6→7→11→11, deploy 4→7→10→9). So extra breadth surfaces a *mid-value tail* that clears the floor
+but never a *better top* — the best questions are found in the first ~2 draws. This is the stronger
+confirmation of the coverage-scan conclusion: **breadth is bounded by value, not coverage** → keep the
+initial breadth modest and let the **families layer** do structured high-value coverage. (research-ratelimit
+is the go-find-out outlier — max value 0.18–0.37, ≤1 above floor — exactly the regime where high
+derivability gates value down.) No change to the shipped breadth knobs.
+
+## Comparative elicitation (#24) — the within-task ranking experiment
+
+**The target.** Between regimes, value predicts realized improvement well (ρ≈0.66). The one weakness is
+**within-task** ranking — per-prompt mean Spearman ρ≈0.34: given one task's candidate questions, the
+top-ranked isn't reliably the most valuable. Hypothesis: the cause is **absolute** 0-1 Δ/stakes
+elicitation (models score poorly in isolation), and **comparative** elicitation (forced choices, which
+models do well) should rank better within a task.
+
+**The instrument** (`scripts/pairwise.py` + `pipeline.judge_plan_change_pairwise`): for each question,
+compare its answers PAIRWISE ("which changes the response more?" / "which matters more?"), aggregate via
+Bradley-Terry, and write the SAME per-answer `delta_plan`/`stakes` the absolute judge writes — a drop-in
+for `voi.evsi`/`score_record`. **Between-task scale is preserved** by two virtual anchors present in
+every question's set — FLOOR ("no change") → 0, CEILING ("completely different") → 1 — so a question
+whose answers merely tie FLOOR lands near 0 (low EVSI) and a high-impact one lands high; pairwise fixes
+within-question ordering without flattening cross-question magnitude (unit-tested:
+`test_scale_preserved_across_questions`).
+
+**The gate** (`validate_evsi --ab` → `analyze_evsi`): both methods are scored on the SAME question/answer
+set with the realized measurement shared (so only elicitation differs); each method's within-task mean ρ
+is reported against `realized_change` and the clean `realized_regret`. **Decision rule: adopt pairwise as
+the default ONLY if Δρ > 0.02; otherwise keep absolute.** Off by default (`value_judge_mode="absolute"`),
+so the experiment cannot regress the live skill.
+
+**RESULTS (first host A/B — `validate_evsi --ab --source all_scored`, 6 prompts / 36 questions / 108
+pairs per arm, local `fast` judge held fixed across both arms; cloud `deepseek` isn't reachable from the
+host shell). Within-task mean Spearman ρ (the gate):**
+
+| target | absolute | pairwise | Δρ | gate (>0.02) |
+|---|---|---|---|---|
+| realized_change | +0.040 | +0.042 | +0.002 | tie → keep absolute |
+| realized_regret (change×stakes) | +0.323 | +0.363 | **+0.040** | pairwise edges ahead |
+
+**Verdict: NOT a clear win → keep `absolute` the default; pairwise stays built, off, and ready.** Reading:
+(a) pairwise is **non-inferior** (ties on change, slightly better on the stakes-weighted regret) — it does
+**not** regress the skill; (b) the realized_change within-task ρ is ≈0 for **both** methods, not just a
+pairwise failure — the local `fast` realized judge **saturates** (39% of pairs at realized=1.0; 0% at
+0.0), which destroys within-task discrimination on the raw-change target regardless of elicitation; (c) on
+the less-saturated regret target both rank far better (~0.33) and pairwise leads by +0.040, consistent
+with the hypothesis but marginal on n=6. The *between*-question validity is intact and healthy on this
+judge too (per-answer projected_delta vs realized_change Pearson 0.47 / Spearman 0.48; per-question
+projected-EVSI vs realized-EVSI ρ **0.80**) — the frontier remains **within-task** ranking.
+
+**Why we don't flip on this:** the opportunity isn't *clear* (Δρ small, n=6, and the primary target's
+judge is saturated). The bottleneck is **judge quality, not method** — more local-judge prompts would
+just tighten a biased estimate. The decisive re-test is a **stronger, de-saturated realized judge**
+(`deepseek` in-container) and/or more prompts; the machinery + `--ab` gate are in place to run it the
+moment that judge is reachable. Until a clear win, `absolute` (validated, ρ≈0.64 between-question) stands.
 
 ## Caveats
 

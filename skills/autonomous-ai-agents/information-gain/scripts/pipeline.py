@@ -44,9 +44,10 @@ except ImportError as e:  # pragma: no cover - environment guard
         f"{_ASK!r}. Install the ask skill or set ASK_SCRIPTS_DIR / HERMES_HOME."
     ) from e
 
-# Sibling pure-math module, used to dedup sampled candidate questions.
+# Sibling pure-math modules: voi (dedup/scoring), pairwise (comparative-elicitation aggregation).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import voi  # noqa: E402
+import pairwise  # noqa: E402
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434/api/chat")
 OLLAMA_TAGS_URL = OLLAMA_URL.replace("/api/chat", "/api/tags")
@@ -551,6 +552,116 @@ def judge_plan_change(problem, framing, baseline_plan, rec, model, timeout=150, 
     return rec
 
 
+# ── stage 3, comparative variant (off by default; #24) ────────────────────────
+# The absolute judge above scores each answer's delta_plan/stakes in isolation on a 0-1 scale —
+# fragile WITHIN a task (the model can't reliably say 0.7 vs 0.5). The pairwise judge instead asks
+# forced-choice comparisons ("which answer changes the response more?"), which models do far better,
+# and aggregates them (Bradley-Terry, pairwise.py) into the SAME delta_plan/stakes [0,1] fields, so
+# it's a drop-in for voi.evsi/score_record. Two virtual ANCHOR items (FLOOR = no change, CEILING =
+# completely different) are present in every question's comparison set and map to 0/1, carrying an
+# absolute-ish scale ACROSS questions so between-task ranking (the validated signal) is preserved.
+
+_PAIRWISE_ANCHORS = {
+    # (floor_label, ceiling_label) per dimension — the two fixed reference outcomes.
+    "change": ("the response stays EXACTLY the baseline (no change at all)",
+               "a COMPLETELY DIFFERENT response (opposite approach or conclusion)"),
+    "stakes": ("it would NOT MATTER AT ALL which response the user got",
+               "getting it wrong would be SEVERE — the response fails the user's real need"),
+}
+_PAIRWISE_QUESTION = {
+    "change": "which one would make your RESPONSE to the prompt change MORE from the baseline?",
+    "stakes": ("for which one would it MATTER MORE that you got the response right — i.e. higher "
+               "cost if you assumed the baseline and that option were actually true?"),
+}
+
+
+def pairwise_judge_prompt(problem, framing, baseline_plan, question, items, dimension):
+    """Prompt for ONE dimension's pairwise pass. `items` is the full comparison set INCLUDING the
+    two anchors (index 0 = FLOOR, last = CEILING); the model judges every unordered pair."""
+    listing = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(items))
+    pairs = pairwise.all_pairs(len(items))
+    pair_lines = "\n".join(f"- pair [{i + 1}, {j + 1}]" for i, j in pairs)
+    ask = _PAIRWISE_QUESTION.get(dimension, _PAIRWISE_QUESTION["change"])
+    return (
+        "Compare possible answers to a clarifying question PAIRWISE — judge each pair on its own, "
+        "do NOT score them in isolation.\n\n"
+        f"PROMPT:\n{problem}\n\n"
+        f"GOAL: {framing.get('goal', '')}\n\n"
+        "BASELINE RESPONSE (your best answer right now):\n"
+        f"{baseline_plan}\n\n"
+        f"QUESTION: {question}\n\n"
+        f"OPTIONS (1 and {len(items)} are fixed reference points):\n{listing}\n\n"
+        f"For EACH pair below, decide: {ask}\n{pair_lines}\n\n"
+        "Return ONLY a JSON object:\n"
+        '{"comparisons": [{"a": int, "b": int, "winner": int|"tie"}, ...]}\n'
+        "- a, b: the two option NUMBERS from the pair.\n"
+        "- winner: the option number that wins the comparison, or \"tie\" if roughly equal.\n"
+        "Judge every listed pair. Respond ONLY with the JSON object."
+    )
+
+
+def _pairwise_scores(problem, framing, baseline_plan, question, answers, dimension, model,
+                     timeout, sink=None):
+    """Run one dimension's pairwise pass → per-real-answer score in [0,1] (anchored). Returns a list
+    aligned with `answers`, or None if the comparison call yields nothing usable (caller defaults to
+    0.0, mirroring the absolute judge's safe-zero)."""
+    floor_lbl, ceil_lbl = _PAIRWISE_ANCHORS.get(dimension, _PAIRWISE_ANCHORS["change"])
+    items = [floor_lbl] + [a.get("answer", "") for a in answers] + [ceil_lbl]
+    floor_idx, ceil_idx = 0, len(items) - 1
+    obj, err = _call_json(
+        model, pairwise_judge_prompt(problem, framing, baseline_plan, question, items, dimension),
+        timeout, num_predict=700, sink=sink)
+    raw = obj.get("comparisons") if isinstance(obj, dict) else (obj if isinstance(obj, list) else None)
+    comps = []
+    for c in (raw or []):
+        if not isinstance(c, dict):
+            continue
+        try:
+            a, b = int(c["a"]) - 1, int(c["b"]) - 1  # 1-based in the prompt → 0-based here
+        except (KeyError, TypeError, ValueError):
+            continue
+        w = c.get("winner")
+        if isinstance(w, str) and w.strip().lower().startswith("tie"):
+            outcome = 0.5
+        else:
+            try:
+                outcome = 1.0 if int(w) - 1 == a else 0.0 if int(w) - 1 == b else 0.5
+            except (TypeError, ValueError):
+                outcome = 0.5
+        comps.append((a, b, outcome))
+    if not comps:
+        return None, err
+    strengths = pairwise.bradley_terry(len(items), comps)
+    scores = pairwise.anchored_scores(strengths, floor_idx, ceil_idx)
+    return scores[1:-1], err  # drop the two anchors → align with `answers`
+
+
+def judge_plan_change_pairwise(problem, framing, baseline_plan, rec, model, timeout=150,
+                               capture=False):
+    """Stage 3 (comparative). Same contract as judge_plan_change: writes delta_plan + stakes onto
+    each answer in rec — but elicited by pairwise comparison (BT-aggregated, anchored), not absolute
+    scoring. Two model calls per question (change, stakes). Safe-zeroes on any parse failure."""
+    answers = rec.get("answers") or []
+    if not answers:
+        return rec
+    sink_c = [] if capture else None
+    sink_s = [] if capture else None
+    deltas, err_c = _pairwise_scores(problem, framing, baseline_plan, rec["question"], answers,
+                                     "change", model, timeout, sink_c)
+    stakes, err_s = _pairwise_scores(problem, framing, baseline_plan, rec["question"], answers,
+                                     "stakes", model, timeout, sink_s)
+    for i, a in enumerate(answers):
+        a["delta_plan"] = deltas[i] if deltas and i < len(deltas) else 0.0
+        a["stakes"] = stakes[i] if stakes and i < len(stakes) else 0.0
+    err = err_c or err_s
+    if err:
+        rec["error"] = err
+    if capture:
+        rec.setdefault("_trace", {})["judge"] = {"change": (sink_c[0] if sink_c else None),
+                                                 "stakes": (sink_s[0] if sink_s else None)}
+    return rec
+
+
 # ── parallel batch helpers ───────────────────────────────────────────────────
 
 
@@ -584,4 +695,12 @@ def judge_plan_change_batch(problem, framing, baseline_plan, recs, model, timeou
     return _parallel(
         lambda r: judge_plan_change(problem, framing, baseline_plan, r, model, timeout,
                                     capture),
+        recs)
+
+
+def judge_plan_change_pairwise_batch(problem, framing, baseline_plan, recs, model, timeout=150,
+                                     capture=False):
+    return _parallel(
+        lambda r: judge_plan_change_pairwise(problem, framing, baseline_plan, r, model, timeout,
+                                             capture),
         recs)

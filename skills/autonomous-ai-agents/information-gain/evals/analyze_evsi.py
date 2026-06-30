@@ -80,6 +80,12 @@ def by_question(rows):
             x["_pn"] = max(0.0, x["prob"]) / ptot  # renormalized over tested answers
         realized_change = sum(x["_pn"] * x["realized_change"] for x in rs)
         realized_evsi = sum(x["_pn"] * x["realized_change"] * x["stakes"] for x in rs)
+        # realized_regret is the CLEAN, method-independent realized EVSI term (uses realized_stakes,
+        # not the projected stakes that confound realized_evsi). Falls back to realized_change if a
+        # row lacks it (older runs).
+        realized_regret = sum(x["_pn"] * (x.get("realized_regret")
+                                          if x.get("realized_regret") is not None
+                                          else x["realized_change"]) for x in rs)
         max_delta = max(x["projected_delta"] for x in rs)
         mean_delta = sum(x["_pn"] * x["projected_delta"] for x in rs)
         out.append({
@@ -87,6 +93,7 @@ def by_question(rows):
             "q_u": rs[0]["q_u"], "q_evsi": rs[0]["q_evsi"], "q_value": rs[0]["q_value"],
             "max_delta": max_delta, "mean_delta": mean_delta,
             "realized_change": realized_change, "realized_evsi": realized_evsi,
+            "realized_regret": realized_regret,
         })
     return out
 
@@ -166,12 +173,76 @@ def p1c(questions, target_key="realized_change"):
     return results
 
 
+def ab_within_task(rows):
+    """The #24 GATE. When rows carry a `method` tag (validate_evsi --ab), compare each elicitation
+    method's WITHIN-TASK ranking (per-prompt mean Spearman of the projected formulas vs the realized
+    target). Pairwise should be adopted as default ONLY if it measurably beats absolute here — the one
+    metric where the skill is weak. Realized targets are method-independent, so it's a clean A/B."""
+    by_method = defaultdict(list)
+    for r in rows:
+        by_method[r.get("method") or "absolute"].append(r)
+    if len(by_method) < 2:
+        return  # not an A/B run
+    print("\n" + "=" * 70)
+    print("#24 GATE — WITHIN-TASK RANKING by elicitation method (per-prompt mean ρ)")
+    print("=" * 70)
+    summary = {}
+    for method, mrows in sorted(by_method.items()):
+        qs = by_question(mrows)
+        summary[method] = {
+            "n_q": len(qs),
+            "realized_change": p1c_value(qs, "realized_change"),
+            "realized_regret": p1c_value(qs, "realized_regret"),
+        }
+    for target in ("realized_change", "realized_regret"):
+        print(f"\n  target = {target}:")
+        best = max((summary[m][target] for m in summary if summary[m][target] is not None),
+                   default=None)
+        for method in sorted(summary):
+            v = summary[method][target]
+            star = "  <- best" if v is not None and v == best else ""
+            print(f"    {method:<10} value √(U·EVSI) mean ρ = {v:+.3f}{star}" if v is not None
+                  else f"    {method:<10} mean ρ = n/a")
+    a, p = summary.get("absolute", {}), summary.get("pairwise", {})
+    print("\n  VERDICT:")
+    for target in ("realized_change", "realized_regret"):
+        av, pv = a.get(target), p.get(target)
+        if av is None or pv is None:
+            continue
+        delta = pv - av
+        verb = "BEATS" if delta > 0.02 else "ties" if abs(delta) <= 0.02 else "LOSES to"
+        print(f"    on {target}: pairwise {verb} absolute (Δρ = {delta:+.3f}) "
+              f"→ {'adopt pairwise' if delta > 0.02 else 'keep absolute (no regression)'}")
+
+
+def p1c_value(questions, target_key):
+    """Per-prompt mean Spearman of the shipped formula (value √(U·EVSI)) vs `target_key`. The single
+    number the A/B gate turns on (no console print — used by ab_within_task)."""
+    by_prompt = defaultdict(list)
+    for q in questions:
+        by_prompt[q["prompt"]].append(q)
+    rhos = []
+    for _, qs in by_prompt.items():
+        if len(qs) < 2:
+            continue
+        rho = spearman([q["q_value"] for q in qs], [q[target_key] for q in qs])
+        if rho is not None:
+            rhos.append(rho)
+    return sum(rhos) / len(rhos) if rhos else None
+
+
 def main(argv):
     path = argv[1] if len(argv) > 1 else "/Users/dadleet/.hermes/evsi_validation.json"
     rows = load_rows(path)
     if not rows:
         print(f"no usable rows in {path}", file=sys.stderr)
         return 1
+    # If this is an A/B run, report the per-method gate first, then fall through to the standard
+    # single-method analysis on the absolute rows (the live default) for the usual diagnostics.
+    methods = {r.get("method") for r in rows if r.get("method")}
+    if len(methods) >= 2:
+        ab_within_task(rows)
+        rows = [r for r in rows if (r.get("method") or "absolute") == "absolute"]
     questions = by_question(rows)
     print(f"\nloaded {len(rows)} answer-rows / {len(questions)} questions / "
           f"{len({q['prompt'] for q in questions})} prompts from {path}\n")

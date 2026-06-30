@@ -11,9 +11,10 @@ loop into the sibling **`investigator`** skill (`../../investigator/evals/valida
 | `benchmark.py` | prompt × config × rep matrix; usage + adjudicated scores per run. | `benchmark-findings.md` |
 | `adjudicator.py` | LLM judge for a single run (framing/relevance/value/diversity/calibration). | — |
 | `score_scan.py` | cheap value-structure scan across the bank (U/EVSI/value/stakes/Δ/derivable, per category). No realized_change. | `evsi-validation-findings.md` §Domain sensitivity |
+| `saturation_scan.py` | breadth sweep. Default: distinct-target **coverage** (generation-only). `--scored`: full-pipeline **value** saturation (max_value + #≥floor per breadth). | §Stop + breadth calibration |
 | `compare_domains.py` | life vs agentic side-by-side of the value distributions. | §Domain sensitivity |
-| `validate_evsi.py` | inject projected answer → re-derive → judge **realized change** (+ realized **stakes**). `--source bucket\|all_scored`. | §P1a, §Agentic realized calibration |
-| `analyze_evsi.py` | post-hoc calibration + formula ablations from a validate_evsi run. | §P1a / §P1c |
+| `validate_evsi.py` | inject projected answer → re-derive → judge **realized change** (+ realized **stakes**). `--source bucket\|all_scored`. `--ab` A/Bs absolute-vs-pairwise elicitation on one shared realized set (`--elicit-model` to set a host-local judge). | §P1a, §Agentic realized calibration, §Comparative elicitation |
+| `analyze_evsi.py` | post-hoc calibration + formula ablations. On an `--ab` run, prints the **#24 gate**: per-method within-task ρ + adopt/keep verdict. | §P1a / §P1c / §Comparative elicitation |
 | `analyze_validity.py` | de-confounded per-regime analysis (stakes-judge calibration, regret). | §realized-stakes instrument |
 
 *(End-to-end wrapper A/B — `validate_wrapper.py` — now lives in the `investigator` skill's `evals/`.)*
@@ -27,7 +28,13 @@ loop into the sibling **`investigator`** skill (`../../investigator/evals/valida
   inert in the target domain (it discriminates ask-vs-find-out), so the life-only "drop U" was an
   artifact. Absolute thresholds mis-fire across regimes → selection is top-K **by rank**.
 - **Stakes resists absolute post-hoc measurement** (collapse / central-tendency) → comparative/pairwise
-  is the path if ever needed; the Δ-half is the validated part.
+  is the path if ever needed; the Δ-half is the validated part. **Comparative elicitation (#24) is now
+  BUILT as an off-by-default, A/B-gated experiment** (`value_judge_mode=pairwise`): forced-choice
+  comparisons → Bradley-Terry (`scripts/pairwise.py`), anchored FLOOR/CEILING so between-task scale is
+  preserved. First host A/B (6 prompts, local judge): pairwise is **non-inferior** (within-task ρ ties
+  on realized_change, +0.040 on realized_regret) — encouraging but **not a clear win** (n=6; the local
+  realized judge saturates), so **`absolute` stays the default**. Pairwise is ready to re-test against a
+  stronger/de-saturated judge (`deepseek` in-container). The live default is untouched.
 - **Wrapper end-to-end is task-dependent** (de-confounded 1-1 at k=1): helps where a clarification
   shapes the work, redundant where a capable agent self-investigates. Distinctive value = user-only
   constraints. The grounded answerer's **cwd** must be the user's project.
@@ -39,6 +46,15 @@ loop into the sibling **`investigator`** skill (`../../investigator/evals/valida
 OLLAMA_URL=http://localhost:11434/api/chat HERMES_HOME=~/.hermes python3 evals/score_scan.py --out /tmp/scan.json
 OLLAMA_URL=http://localhost:11434/api/chat HERMES_HOME=~/.hermes python3 evals/validate_evsi.py --source all_scored --out /tmp/ve.json
 python3 evals/analyze_evsi.py /tmp/ve.json
+
+# value-saturation (does the HIGH-value signal plateau before coverage does?)
+OLLAMA_URL=http://localhost:11434/api/chat HERMES_HOME=~/.hermes python3 evals/saturation_scan.py --scored --out /tmp/sat.json
+
+# comparative-elicitation A/B gate (#24) — host-local judge so cloud isn't needed; both arms share it
+OLLAMA_URL=http://localhost:11434/api/chat HERMES_HOME=~/.hermes python3 evals/validate_evsi.py \
+  --ab --source all_scored --gen-model fast --elicit-model fast --judge-model fast \
+  --prompt-ids add-auth gmail-triage deploy-app --out /tmp/ab.json
+python3 evals/analyze_evsi.py /tmp/ab.json   # prints the per-method within-task ρ + verdict
 
 # in-container (wrapper end-to-end), pinned to a real project to de-confound
 docker exec -e OLLAMA_URL=http://host.docker.internal:11434/api/chat -e HERMES_HOME=/opt/data hermes \

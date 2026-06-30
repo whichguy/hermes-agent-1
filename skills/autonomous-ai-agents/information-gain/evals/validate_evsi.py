@@ -73,15 +73,46 @@ def stakes_judge(prompt, baseline, new, model, timeout):
     return voi.clamp01(obj.get("stakes", 0.0)) if isinstance(obj, dict) else None
 
 
-def run_prompt(pr, cfg, judge_model, max_answers, timeout, source="bucket"):
-    result = infogain.run(pr["problem"], cfg)
+def _snapshot(records):
+    """Freeze the PROJECTED scores of a record set keyed by object id, BEFORE any re-judging mutates
+    the per-answer delta_plan/stakes (and before re-score_record overwrites q-level u/evsi/value).
+    Returns {"q": {id(q): {u,evsi,value}}, "a": {id(q): {id(a): (delta, stakes)}}}."""
+    q_scores, a_scores = {}, {}
+    for q in records:
+        q_scores[id(q)] = {"u": q.get("u", 0.0), "evsi": q.get("evsi", 0.0),
+                           "value": q.get("value", 0.0)}
+        a_scores[id(q)] = {id(a): (voi.clamp01(a.get("delta_plan", 0.0)),
+                                   voi.clamp01(a.get("stakes", 0.0)))
+                           for a in (q.get("answers") or [])}
+    return {"q": q_scores, "a": a_scores}
+
+
+def run_prompt(pr, cfg, judge_model, max_answers, timeout, source="bucket", ab=False):
+    """One prompt → realized-vs-projected rows. With ab=True, BOTH elicitation methods (absolute +
+    pairwise) are scored on the SAME question/answer set and the realized measurement (re-derive +
+    judges) is shared across them — so the per-method within-task ranking is a clean A/B and the
+    only added cost is the pairwise re-judge calls, not a second realized pass."""
+    result = infogain.run(pr["problem"], cfg)  # absolute judge (default cfg)
     plan_model = pipeline.resolve_alias(cfg["plan_model"])
-    baseline = (result.get("framing") or {}).get("baseline_plan", "")
+    elicit_model = pipeline.resolve_alias(cfg["value_judge_model"])  # same model, both elicitations
+    framing = result.get("framing") or {}
+    baseline = framing.get("baseline_plan", "")
+    records = result.get(source, [])
+
+    # Snapshot ABSOLUTE projected scores first (the default run produced them), THEN, for ab, re-judge
+    # the same records with the pairwise judge and snapshot those. Realized is measured once below.
+    methods = {"absolute": _snapshot(records)}
+    if ab:
+        pipeline.judge_plan_change_pairwise_batch(pr["problem"], framing, baseline, records,
+                                                  elicit_model, cfg["judge_timeout"])
+        for q in records:
+            voi.score_record(q)
+        methods["pairwise"] = _snapshot(records)
+
     rows = []
-    # source="all_scored" tests realized_change across the WHOLE value spectrum (incl. questions
-    # below the discard threshold) — needed in the agentic domain where most fall below the
-    # life-tuned cutoff, and it yields the improvement-vs-value (diminishing_floor) curve.
-    for q in result.get(source, []):
+    # source="all_scored" tests across the WHOLE value spectrum (incl. below-threshold questions) —
+    # needed in the agentic domain and for the within-task ranking comparison (more questions/prompt).
+    for q in records:
         answers = sorted((q.get("answers") or []),
                          key=lambda a: -voi.clamp01(a.get("prob", 0)))[:max_answers]
         for a in answers:
@@ -91,20 +122,22 @@ def run_prompt(pr, cfg, judge_model, max_answers, timeout, source="bucket"):
             realized = change_judge(pr["problem"], baseline, new_resp, judge_model, timeout)
             r_stakes = stakes_judge(pr["problem"], baseline, new_resp, judge_model, timeout)
             regret = None if (realized is None or r_stakes is None) else realized * r_stakes
-            rows.append({
+            shared = {
                 "prompt": pr["id"], "cat": pr.get("cat"), "question": q["question"][:120],
                 "target": q.get("target"), "answer": (a.get("answer") or "")[:90],
                 "prob": round(voi.clamp01(a.get("prob", 0)), 3),
-                "projected_delta": round(voi.clamp01(a.get("delta_plan", 0)), 3),
-                "stakes": round(voi.clamp01(a.get("stakes", 0)), 3),
                 "realized_change": None if realized is None else round(realized, 3),
                 "realized_stakes": None if r_stakes is None else round(r_stakes, 3),
-                "realized_regret": None if regret is None else round(regret, 3),  # realized EVSI term
-                "q_u": round(q.get("u", 0), 3), "q_evsi": round(q.get("evsi", 0), 3),
-                "q_value": round(q.get("value", 0), 3),
-            })
-            print(f"    pair: {pr['id']} | Δproj={a.get('delta_plan')} realized={realized} "
-                  f"r_stakes={r_stakes} | {q['question'][:40]}", file=sys.stderr, flush=True)
+                "realized_regret": None if regret is None else round(regret, 3),  # method-independent
+            }
+            for method, snap in methods.items():
+                qd, ad = snap["q"][id(q)], snap["a"][id(q)].get(id(a), (0.0, 0.0))
+                rows.append({**shared, "method": method,
+                             "projected_delta": round(ad[0], 3), "stakes": round(ad[1], 3),
+                             "q_u": round(qd["u"], 3), "q_evsi": round(qd["evsi"], 3),
+                             "q_value": round(qd["value"], 3)})
+            print(f"    pair: {pr['id']} | realized={realized} r_stakes={r_stakes} | "
+                  f"{q['question'][:40]}", file=sys.stderr, flush=True)
     return rows, baseline
 
 
@@ -113,18 +146,30 @@ def main(argv=None):
     p.add_argument("--out")
     p.add_argument("--prompt-ids", nargs="*")
     p.add_argument("--gen-model", default="fast", help="all info-gain stages (cheap, deterministic).")
-    p.add_argument("--judge-model", default="deepseek", help="change judge (strong).")
+    p.add_argument("--judge-model", default="deepseek", help="realized change/stakes judge (strong).")
+    p.add_argument("--elicit-model", default=None,
+                   help="override the value_judge_model used for ABSOLUTE + PAIRWISE elicitation "
+                        "(default: keep the shipped deepseek). Set a host-local model (e.g. fast, "
+                        "gpt-oss:20b) for a host A/B where cloud judges aren't reachable. Both arms "
+                        "share it, so the A/B stays fair.")
     p.add_argument("--max-answers", type=int, default=3, help="top-N answers per question to test.")
     p.add_argument("--source", choices=["bucket", "all_scored"], default="bucket",
                    help="bucket = survivors only; all_scored = every scored candidate (full spectrum).")
+    p.add_argument("--ab", action="store_true",
+                   help="A/B both elicitation methods (absolute + pairwise) on the SAME question/answer "
+                        "set, sharing the realized measurement. Emits two rows per pair tagged with "
+                        "`method`; analyze_evsi reports per-method within-task ρ. (#24 gate.)")
     p.add_argument("--timeout", type=int, default=180)
     args = p.parse_args(argv)
 
     cfg = dict(infogain.DEFAULTS)
     for k in ("plan_model", "question_gen_model", "answer_model"):
         cfg[k] = args.gen_model
-    # value_judge_model stays at the shipped default (deepseek) so the projected_delta
-    # we validate is the REAL judge's, not a cheap stand-in.
+    # value_judge_model (elicitation) defaults to the shipped deepseek so the projected_delta we
+    # validate is the REAL judge's; --elicit-model overrides it (needed on a host where cloud judges
+    # aren't reachable — both absolute and pairwise arms share it, keeping the A/B fair).
+    if args.elicit_model:
+        cfg["value_judge_model"] = args.elicit_model
     cfg["max_rounds"] = 1
     cfg["mode"] = "focus"
     judge_model = pipeline.resolve_alias(args.judge_model)  # alias -> real model name
@@ -134,7 +179,8 @@ def main(argv=None):
     for pr in prompts:
         print(f"… {pr['id']}: info-gain + realized-change per (question, answer)", file=sys.stderr, flush=True)
         try:
-            prows, _ = run_prompt(pr, cfg, judge_model, args.max_answers, args.timeout, args.source)
+            prows, _ = run_prompt(pr, cfg, judge_model, args.max_answers, args.timeout,
+                                  args.source, ab=args.ab)
         except Exception as e:
             prows = [{"prompt": pr["id"], "error": str(e)}]
         rows.extend(prows)

@@ -95,9 +95,49 @@ questions read as derivable → `U → 0` → they drop out automatically). The 
 scoring retires answered questions and promotes the next tier. The answering and the looping live
 **outside** the skill, where the caller put them.
 
+## Comparative elicitation (#24) — built, off by default, A/B-gated
+
+The one *measured* weakness is **within-task ranking** (per-prompt Spearman ρ≈0.34): given one task's
+candidate questions, the top-ranked isn't reliably the most valuable. The likely cause is the same
+fragility that collapsed the realized-stakes instrument — **absolute 0-1 Δ/stakes elicitation**, which
+models do poorly. The fix is **comparative elicitation**: ask forced-choice comparisons ("which answer
+changes the response more?", which models do well) and aggregate them, instead of scoring each answer
+in isolation.
+
+This is built as an **off-by-default, A/B-gated experiment** so it can only ever *help*, never regress
+the live skill:
+
+- **`scripts/pairwise.py`** (pure, tested) — Bradley-Terry MLE (phantom-regularized) + win-count
+  fallback + anchored [0,1] mapping. The subtle part is preserving **between-task** scale (the
+  validated ρ≈0.66): two virtual ANCHOR items — `FLOOR` ("no change") → 0 and `CEILING` ("completely
+  different") → 1 — sit in *every* question's comparison set, so a question whose answers merely tie
+  FLOOR lands near 0 (low EVSI) while a high-impact question's answers land high. Pairwise fixes the
+  within-question ordering without flattening cross-question magnitude.
+- **`pipeline.judge_plan_change_pairwise[_batch]`** — same contract as the absolute judge (writes the
+  same per-answer `delta_plan`/`stakes` that `voi.evsi`/`score_record` read), so it's a drop-in. Two
+  model calls/question (change, stakes); safe-zeroes on any parse failure.
+- **Selector** — `value_judge_mode` ("absolute" | "pairwise", default **"absolute"**), special-cased
+  like `--mode`; absent key → "absolute", so every cfg built from DEFAULTS is byte-identical. One call
+  site branches (`infogain.run`).
+- **The gate** — `validate_evsi --ab` scores BOTH methods on the SAME question/answer set (realized
+  measured once, shared); `analyze_evsi` prints each method's within-task mean ρ. **Pairwise becomes
+  the default ONLY if it measurably beats absolute** (Δρ > 0.02 on realized_change / realized_regret);
+  otherwise absolute (validated) is untouched.
+- **First A/B verdict (2026-06, 6 prompts, local judge): KEEP ABSOLUTE.** Pairwise was non-inferior
+  (within-task ρ tied on realized_change, +0.040 on realized_regret) but not a *clear* win — n=6 and the
+  local realized judge saturates (39% at 1.0), so the primary target can't discriminate within-task for
+  either method. Not enough to flip the default; pairwise stays built + off, pending a stronger
+  (de-saturated, e.g. in-container `deepseek`) judge and/or more prompts. See
+  `evsi-validation-findings.md` §"Comparative elicitation (#24)".
+
 ## Decided / deferred
 
 - **Decided, keep:** one layer of projected answers (no chain) · within-round semantic consolidation
-  only · `--mode focus` default behavior unchanged · report-only (never answers/asks itself).
+  only · `--mode focus` default behavior unchanged · report-only (never answers/asks itself) · the
+  **formula stays FROZEN** (pairwise changes only *how Δ/stakes are elicited*, never the √(U·EVSI) form).
+- **Confirmation tooling (do-no-harm):** `saturation_scan.py --scored` tests whether the HIGH-value
+  signal saturates earlier than distinct-target coverage (it shouldn't keep growing) — evidence that
+  breadth is bounded by value, so modest breadth + the families layer is the right coverage mechanism.
 - **Deferred (not bundled):** making `deepseek` the default judge (the "generous judge" calibration
-  fix) · risk-averse tilt · pushing the branch / baking into the image.
+  fix) · risk-averse tilt · realized-pairwise stakes for the de-confounded clean floor (#21) · pushing
+  the branch / baking into the image.

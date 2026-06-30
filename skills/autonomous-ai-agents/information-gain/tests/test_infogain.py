@@ -12,6 +12,7 @@ Run:  python3 tests/test_infogain.py -v
       uv run --with pytest python3 -m pytest tests/ -v -k "not live"
 """
 
+import json
 import math
 import os
 import sys
@@ -21,6 +22,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 
 import voi  # noqa: E402
+import pairwise  # noqa: E402
 
 
 def _answer(prob, dp, st):
@@ -101,6 +103,48 @@ class TestVoiMath(unittest.TestCase):
         # per-answer EVSI terms sum to EVSI
         self.assertAlmostEqual(sum(t["term"] for t in b["evsi_terms"]), b["evsi"], places=3)
         self.assertEqual(len(b["evsi_terms"]), 2)
+
+
+class TestPairwiseAggregator(unittest.TestCase):
+    """pairwise.py — pure Bradley-Terry / win-count aggregation for comparative elicitation (#24)."""
+
+    # items: 0=FLOOR, 1=weak answer, 2=strong answer, 3=CEILING ; transitive chain
+    _COMPS = [(3, 2, 1.0), (3, 1, 1.0), (3, 0, 1.0),
+              (2, 1, 1.0), (2, 0, 1.0), (1, 0, 1.0)]
+
+    def test_bradley_terry_monotone_transitive(self):
+        s = pairwise.bradley_terry(4, self._COMPS)
+        self.assertTrue(s[3] > s[2] > s[1] > s[0])  # more wins -> higher strength
+
+    def test_anchored_scores_pin_anchors_and_order_reals(self):
+        sc = pairwise.anchored_scores(pairwise.bradley_terry(4, self._COMPS), 0, 3)
+        self.assertAlmostEqual(sc[0], 0.0, places=6)   # FLOOR -> 0
+        self.assertAlmostEqual(sc[3], 1.0, places=6)   # CEILING -> 1
+        self.assertTrue(0.0 < sc[1] < sc[2] < 1.0)     # reals ordered strictly between
+
+    def test_scale_preserved_across_questions(self):
+        # the between-task safeguard: a question whose reals merely TIE the floor must land LOWER than
+        # a question whose reals strongly beat it — even though both normalize against the same anchors.
+        low = [(3, 2, 1.0), (3, 1, 1.0), (3, 0, 1.0), (2, 1, 0.5), (2, 0, 0.5), (1, 0, 0.5)]
+        high = [(3, 2, 1.0), (3, 1, 1.0), (3, 0, 1.0), (2, 1, 0.5), (2, 0, 1.0), (1, 0, 1.0)]
+        sl = pairwise.anchored_scores(pairwise.bradley_terry(4, low), 0, 3)
+        sh = pairwise.anchored_scores(pairwise.bradley_terry(4, high), 0, 3)
+        self.assertLess(max(sl[1:3]), max(sh[1:3]))
+
+    def test_win_fractions_monotone_and_off_rails(self):
+        wf = pairwise.win_fractions(4, self._COMPS)
+        self.assertTrue(wf[3] > wf[2] > wf[1] > wf[0])
+        self.assertTrue(0.0 < wf[0] and wf[3] < 1.0)  # Laplace prior keeps extremes off 0/1
+
+    def test_degenerate_and_robustness(self):
+        self.assertEqual(pairwise.bradley_terry(0, []), [])
+        self.assertEqual(pairwise.bradley_terry(1, []), [1.0])
+        self.assertEqual(pairwise.anchored_scores([1.0, 1.0], 0, 1), [0.0, 0.0])  # no spread
+        self.assertEqual(pairwise.anchored_scores([], 0, 1), [])
+        self.assertEqual(pairwise.all_pairs(3), [(0, 1), (0, 2), (1, 2)])
+        # malformed comparisons are skipped, not fatal
+        s = pairwise.bradley_terry(2, [("x", 1, 1.0), (0, 1, 1.0), (5, 9, 1.0)])
+        self.assertTrue(s[0] > s[1])
 
 
 class TestSimilarityAndSelection(unittest.TestCase):
@@ -365,6 +409,33 @@ class TestPipelineMocked(unittest.TestCase):
         self.assertGreater(rec["value"], 0.0)
         self.assertFalse(rec["gated_out"])
 
+    # ── pairwise (comparative) judge, #24 ──
+    def test_pairwise_judge_writes_ordered_delta_plan(self):
+        # items 1=FLOOR, 2=pg, 3=mongo, 4=CEILING. pg beats floor+mongo, mongo only ties floor →
+        # pg.delta_plan > mongo.delta_plan, on the SAME fields the absolute judge writes.
+        rec = {"question": "Which DB?", "answers": [{"answer": "pg", "prob": 0.6},
+                                                    {"answer": "mongo", "prob": 0.4}]}
+        comp = ('{"comparisons":[{"a":1,"b":2,"winner":2},{"a":1,"b":3,"winner":"tie"},'
+                '{"a":1,"b":4,"winner":4},{"a":2,"b":3,"winner":2},{"a":2,"b":4,"winner":4},'
+                '{"a":3,"b":4,"winner":4}]}')
+        with mock.patch.object(pipeline, "_call_json", return_value=(json.loads(comp), None)):
+            pipeline.judge_plan_change_pairwise("p", {"goal": "g"}, "baseline", rec, "fast")
+        a = rec["answers"]
+        self.assertGreater(a[0]["delta_plan"], a[1]["delta_plan"])
+        for x in a:  # in-range and present on both dimensions
+            self.assertTrue(0.0 <= x["delta_plan"] <= 1.0 and 0.0 <= x["stakes"] <= 1.0)
+        voi.score_record(rec)
+        self.assertGreater(rec["value"], 0.0)
+
+    def test_pairwise_judge_safe_zero_on_failure(self):
+        rec = {"question": "Q", "answers": [{"answer": "x", "prob": 1.0}]}
+        with mock.patch.object(pipeline, "_call_json", return_value=(None, "bad json")):
+            pipeline.judge_plan_change_pairwise("p", {"goal": "g"}, "b", rec, "fast")
+        self.assertEqual(rec["answers"][0]["delta_plan"], 0.0)
+        self.assertEqual(rec["answers"][0]["stakes"], 0.0)
+        empty = {"question": "Q", "answers": []}  # no answers -> rec returned unchanged
+        self.assertIs(pipeline.judge_plan_change_pairwise("p", {"goal": "g"}, "b", empty, "fast"), empty)
+
 
 @unittest.skipUnless(_PIPELINE_OK, "ask skill / model_utils not importable")
 class TestOrchestrationMocked(unittest.TestCase):
@@ -584,6 +655,48 @@ class TestModeConfig(unittest.TestCase):
         finally:
             os.environ.pop("INFOGAIN_FAMILIES", None) if old is None else os.environ.update(
                 {"INFOGAIN_FAMILIES": old})
+
+    # ── value_judge_mode selector (#24, off by default) ──
+    def test_value_judge_mode_defaults_absolute(self):
+        self.assertEqual(self._cfg(["a problem"])["value_judge_mode"], "absolute")
+
+    def test_value_judge_mode_cli(self):
+        self.assertEqual(self._cfg(["--value-judge-mode", "pairwise", "p"])["value_judge_mode"],
+                         "pairwise")
+
+    def test_value_judge_mode_env(self):
+        old = os.environ.get("INFOGAIN_VALUE_JUDGE_MODE")
+        try:
+            os.environ["INFOGAIN_VALUE_JUDGE_MODE"] = "pairwise"
+            self.assertEqual(self._cfg(["p"])["value_judge_mode"], "pairwise")
+            # explicit CLI beats env
+            self.assertEqual(self._cfg(["--value-judge-mode", "absolute", "p"])["value_judge_mode"],
+                             "absolute")
+        finally:
+            os.environ.pop("INFOGAIN_VALUE_JUDGE_MODE", None) if old is None else os.environ.update(
+                {"INFOGAIN_VALUE_JUDGE_MODE": old})
+
+    def test_default_run_uses_absolute_judge_batch(self):
+        # the SAFETY INVARIANT, asserted: a cfg straight from DEFAULTS (no value_judge_mode key) must
+        # route to the absolute batch — the experiment is inert unless explicitly switched on.
+        cfg = {k: v for k, v in infogain.DEFAULTS.items()}
+        cfg["families"] = {"enabled": False}
+        cfg["max_rounds"] = 1
+        seen = {"fn": None}
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d", "success_criteria": [],
+                                              "baseline_plan": "p"}, None)), \
+             mock.patch.object(pipeline, "generate_questions",
+                               side_effect=lambda *a, **k: ([{"question": "Q", "target": "t",
+                                                             "answers": [], "derivable_prob": 0.1}], None)), \
+             mock.patch.object(pipeline, "project_answers_batch",
+                               side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch",
+                               side_effect=lambda *a, **k: (seen.__setitem__("fn", "absolute"), a[3])[1]), \
+             mock.patch.object(pipeline, "judge_plan_change_pairwise_batch",
+                               side_effect=lambda *a, **k: (seen.__setitem__("fn", "pairwise"), a[3])[1]):
+            infogain.run("vague task", cfg)
+        self.assertEqual(seen["fn"], "absolute")
 
     def test_ranked_list_groups_by_family(self):
         bucket = [{"question": "q-contra", "value": 0.6, "family": "Approach", "lens": "contrarian",

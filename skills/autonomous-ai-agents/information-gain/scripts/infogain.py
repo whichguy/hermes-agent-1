@@ -159,6 +159,13 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
     judge_model = resolve_alias(cfg["value_judge_model"])
     cons_model = resolve_alias(cfg["consolidate_model"])
 
+    # Elicitation seam (#24): default "absolute" (the validated per-answer 0-1 judge). "pairwise"
+    # swaps in the comparative judge (forced choices → Bradley-Terry → same delta_plan/stakes fields).
+    # Absent key → "absolute", so every cfg built straight from DEFAULTS is byte-identical.
+    judge_mode = str(cfg.get("value_judge_mode") or "absolute").strip().lower()
+    judge_batch = (pipeline.judge_plan_change_pairwise_batch if judge_mode == "pairwise"
+                   else pipeline.judge_plan_change_batch)
+
     # Families layer (domain exposure): when on, round 1 generates scoped + contrarian + vantage
     # families and questions within each; selection still scores each question on its own merit, with
     # MMR using the family-diversity tier (hierarchical_similarity) to spread picks across families.
@@ -243,11 +250,11 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
             break
 
         log(f"round {rounds_used}: projecting answers ({ans_model}) + "
-            f"judging plan-change ({judge_model}) for {len(fresh)} questions ...")
+            f"judging plan-change ({judge_model}, {judge_mode}) for {len(fresh)} questions ...")
         fresh = pipeline.project_answers_batch(
             problem, framing, fresh, ans_model, cfg["answers_per_question"],
             cfg["answer_timeout"], capture=trace, evidence=evidence)
-        fresh = pipeline.judge_plan_change_batch(
+        fresh = judge_batch(
             problem, framing, baseline_plan, fresh, judge_model, cfg["judge_timeout"],
             capture=trace)
         for r in fresh:
@@ -644,6 +651,11 @@ def build_parser():
                    help="Preset over the breadth knobs: 'focus' (default — prioritized top few) "
                         "or 'breadth' (wider coverage: more questions/rounds, bigger bucket). "
                         "Individual flags and INFOGAIN_* env vars override the preset.")
+    p.add_argument("--value-judge-mode", choices=["absolute", "pairwise"], default=None,
+                   help="How to elicit per-answer response-change/stakes: 'absolute' (default — "
+                        "score each answer 0-1) or 'pairwise' (forced-choice comparisons → "
+                        "Bradley-Terry; off-by-default experiment, #24). (Special-cased outside "
+                        "the auto-flags, like --mode.)")
     p.add_argument("--families", action=argparse.BooleanOptionalAction, default=None,
                    help="Generate FAMILIES of questions first (scoped + contrarian + vantage) for "
                         "coverage, then score each question on its merit. Default ON; pass "
@@ -676,6 +688,9 @@ def resolve_config(args):
         else:
             cfg[key] = DEFAULTS[key]
     cfg["families"] = _resolve_families(args)  # dict block (kept out of the scalar loop)
+    # value_judge_mode: a string selector, resolved like `mode` (CLI > env > "absolute" default).
+    cfg["value_judge_mode"] = (getattr(args, "value_judge_mode", None)
+                               or os.environ.get("INFOGAIN_VALUE_JUDGE_MODE") or "absolute")
     return cfg
 
 

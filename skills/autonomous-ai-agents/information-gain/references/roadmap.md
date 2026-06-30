@@ -122,6 +122,16 @@ instead of brittle 0–1 ratings. Likely applies to **eliciting** projected Δ/s
 better than they score). Until this lands, the **stakes-half of EVSI is unvalidated by instrument
 limitation, not by a negative result**; the Δ-half stands (agentic per-answer ρ 0.64).
 
+> **STATUS (#24, built — off-by-default, A/B-gated).** Comparative elicitation now ships as an
+> *experiment*, not the default. `scripts/pairwise.py` (Bradley-Terry + anchored FLOOR/CEILING so
+> between-task scale survives) + `pipeline.judge_plan_change_pairwise[_batch]` (same delta_plan/stakes
+> contract) + the `value_judge_mode` selector (default **absolute**; one call site branches). The gate
+> is `validate_evsi --ab` → `analyze_evsi`'s per-method within-task ρ: **adopt pairwise as default only
+> if it measurably beats absolute** (Δρ > 0.02 on realized_change / realized_regret), else keep
+> absolute (no regression). This targets the within-task ranking weakness (ρ≈0.34) directly; the
+> projected-Δ/stakes elicitation is the first application, realized-pairwise stakes (the clean #21
+> floor) the follow-up. See `design-decisions.md` §"Comparative elicitation (#24)".
+
 **Exit:** an EVSI we've shown predicts realized improvement (or a recalibrated one that does).
 
 ## Phase 2 — The iterative context-builder ("iterate context")
