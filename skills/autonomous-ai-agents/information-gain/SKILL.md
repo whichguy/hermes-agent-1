@@ -125,7 +125,11 @@ Full rationale + citations: `references/methodology.md`. Prompt contracts: `refe
 coverage). Breadth works by **sampling the model's own distribution over questions** — `gen_samples`
 independent draws at `gen_temperature`, unioned and deduped — so the breadth comes from the model's
 uncertainty (the tail of its distribution), not a seeded topic list. Scoring stages stay
-deterministic (temperature 0): explore stochastically, evaluate stably. Resolution order is
+deterministic (temperature 0): explore stochastically, evaluate stably. When `gen_samples > 1` the
+sampled candidates are then **semantically consolidated** — a `consolidate_model` (default `fast`)
+clusters questions that resolve the same underlying unknown and keeps one canonical per cluster, so
+high-temperature sampling doesn't pad the bucket with reworded duplicates (it never drops a distinct
+unknown; on failure it falls back to the lexically-deduped set). Resolution order is
 `DEFAULTS ← mode preset ← INFOGAIN_* env ← CLI flag`, so a preset sets the baseline and any explicit
 flag/env still wins (e.g. `--gen-samples 5 --gen-temperature 1.0`).
 

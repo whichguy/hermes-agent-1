@@ -315,6 +315,49 @@ def generate_questions(problem, framing, model, n, avoid=None, timeout=180, sink
     return union, (None if union else (errs[0] if errs else "no questions generated"))
 
 
+def consolidate_prompt(problem, candidates):
+    listing = "\n".join(
+        f"{i + 1}. {c.get('question', '')}  (target: {c.get('target', '')})"
+        for i, c in enumerate(candidates))
+    return (
+        "You are de-duplicating clarifying questions for a problem. Some of the "
+        "questions below resolve the SAME underlying unknown, just worded differently "
+        "(e.g. 'update latency' and 'data freshness' are the same unknown).\n\n"
+        f"PROBLEM:\n{problem}\n\n"
+        f"CANDIDATE QUESTIONS:\n{listing}\n\n"
+        "Group the questions that resolve the same underlying unknown, and return ONE "
+        "canonical question per DISTINCT unknown (use the clearest phrasing). Keep "
+        "genuinely distinct questions separate. Do NOT invent new questions and do NOT "
+        "drop any distinct unknown.\n\n"
+        "Return ONLY a JSON object:\n"
+        '{"questions": [{"question": str, "type": str, "why": str, "target": str, '
+        '"merged_count": int}, ...]}\n'
+        "where merged_count is how many of the input questions this canonical one covers.\n"
+        "Respond ONLY with the JSON object."
+    )
+
+
+def consolidate_questions(problem, candidates, model, timeout=150, sink=None):
+    """Semantic dedup: cluster the sampled candidates by the underlying unknown and
+    keep one canonical question per cluster. Topic-free — the grouping is driven by
+    the questions themselves, not a seeded taxonomy. Never loses questions: on any
+    failure (no JSON / empty result) it returns the input unchanged.
+    """
+    if len(candidates) <= 1:
+        return candidates
+    obj, err = _call_json(model, consolidate_prompt(problem, candidates), timeout,
+                          num_predict=1500, sink=sink)
+    out = _parse_question_items(obj)
+    if not out:  # consolidation failed — never drop questions
+        return candidates
+    if isinstance(obj, dict):
+        raw = obj.get("questions") or []
+        for o, r in zip(out, raw):
+            if isinstance(r, dict) and r.get("merged_count") is not None:
+                o["merged_count"] = r.get("merged_count")
+    return out
+
+
 def project_answers(problem, framing, rec, model, m, timeout=120, capture=False):
     """Stage 2 (single question). Mutates rec with answers[] + derivable_prob."""
     sink = [] if capture else None

@@ -35,6 +35,7 @@ DEFAULTS = {
     "question_gen_model": "glm",
     "answer_model": "fast",
     "value_judge_model": "deepseek",
+    "consolidate_model": "fast",
     "min_bucket_size": 3,
     "target_bucket_size": 5,
     "hard_cap": 7,
@@ -55,7 +56,8 @@ DEFAULTS = {
 _INT = {"min_bucket_size", "target_bucket_size", "hard_cap", "questions_per_round",
         "answers_per_question", "max_rounds", "gen_samples", "plan_timeout", "gen_timeout",
         "answer_timeout", "judge_timeout"}
-_MODEL_KEYS = ("plan_model", "question_gen_model", "answer_model", "value_judge_model")
+_MODEL_KEYS = ("plan_model", "question_gen_model", "answer_model", "value_judge_model",
+               "consolidate_model")
 
 # Named presets over the breadth knobs. "focus" = the (research-grounded) prioritized
 # top-few default; "breadth" = wider coverage via more questions and more rounds, a
@@ -112,6 +114,7 @@ def run(problem, cfg, progress=None, trace=False):
     qg_model = resolve_alias(cfg["question_gen_model"])
     ans_model = resolve_alias(cfg["answer_model"])
     judge_model = resolve_alias(cfg["value_judge_model"])
+    cons_model = resolve_alias(cfg["consolidate_model"])
 
     log(f"framing problem + baseline plan via {plan_model} ...")
     framing_sink = [] if trace else None
@@ -119,7 +122,8 @@ def run(problem, cfg, progress=None, trace=False):
                                             sink=framing_sink)
     baseline_plan = framing.get("baseline_plan", "")
     trace_obj = ({"models": {"plan": plan_model, "question_gen": qg_model,
-                             "answer": ans_model, "value_judge": judge_model},
+                             "answer": ans_model, "value_judge": judge_model,
+                             "consolidate": cons_model},
                   "framing": (framing_sink[0] if framing_sink else None),
                   "rounds": []} if trace else None)
 
@@ -135,6 +139,13 @@ def run(problem, cfg, progress=None, trace=False):
             problem, framing, qg_model, cfg["questions_per_round"], avoid,
             cfg["gen_timeout"], sink=gen_sink,
             samples=cfg["gen_samples"], temperature=cfg["gen_temperature"])
+        cons_sink = None
+        if cfg["gen_samples"] > 1 and len(new_qs) > 1:
+            log(f"round {rounds_used}: consolidating {len(new_qs)} sampled candidates "
+                f"via {cons_model} ...")
+            cons_sink = [] if trace else None
+            new_qs = pipeline.consolidate_questions(
+                problem, new_qs, cons_model, cfg["gen_timeout"], sink=cons_sink)
         dropped = [q["question"] for q in new_qs if voi.is_duplicate(q, seen)]
         fresh = [q for q in new_qs if not voi.is_duplicate(q, seen)]
         seen.extend(fresh)
@@ -144,6 +155,7 @@ def run(problem, cfg, progress=None, trace=False):
                 trace_obj["rounds"].append({
                     "round": rounds_used,
                     "generation": (gen_sink[0] if gen_sink else None),
+                    "consolidation": (cons_sink[0] if cons_sink else None),
                     "dropped_as_duplicate": dropped, "questions": [],
                     "stop_reason": "no new questions"})
             break
@@ -179,6 +191,7 @@ def run(problem, cfg, progress=None, trace=False):
             trace_obj["rounds"].append({
                 "round": rounds_used,
                 "generation": (gen_sink[0] if gen_sink else None),
+                "consolidation": (cons_sink[0] if cons_sink else None),
                 "dropped_as_duplicate": dropped,
                 "questions": [_trace_question(r) for r in fresh],
                 "bucket_after_round": len(bucket),
@@ -471,7 +484,7 @@ def build_parser():
         flag = "--" + key.replace("_", "-")
         if key in _INT:
             p.add_argument(flag, type=int)
-        elif key in ("plan_model", "question_gen_model", "answer_model", "value_judge_model"):
+        elif key in _MODEL_KEYS:
             p.add_argument(flag, type=str)
         else:
             p.add_argument(flag, type=float)

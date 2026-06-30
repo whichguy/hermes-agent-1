@@ -199,6 +199,28 @@ class TestPipelineMocked(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(sorted(q["target"] for q in qs), ["t1", "t2", "t3"])
 
+    def test_consolidate_questions_merges_synonyms(self):
+        cands = [
+            {"question": "How fresh must data be?", "type": "constraint", "why": "w", "target": "freshness"},
+            {"question": "What update latency is acceptable?", "type": "constraint", "why": "w", "target": "latency"},
+            {"question": "Who are the users?", "type": "audience", "why": "w", "target": "users"},
+        ]
+        merged = {"questions": [
+            {"question": "What data freshness / update latency is required?",
+             "type": "constraint", "why": "w", "target": "freshness", "merged_count": 2},
+            {"question": "Who are the users?", "type": "audience", "why": "w",
+             "target": "users", "merged_count": 1}]}
+        with mock.patch.object(pipeline, "_call_json", return_value=(merged, None)):
+            out = pipeline.consolidate_questions("p", cands, "fast")
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0].get("merged_count"), 2)
+
+    def test_consolidate_questions_never_drops_on_failure(self):
+        cands = [{"question": "q1", "target": "t1"}, {"question": "q2", "target": "t2"}]
+        with mock.patch.object(pipeline, "_call_json", return_value=({"questions": []}, "boom")):
+            out = pipeline.consolidate_questions("p", cands, "fast")
+        self.assertEqual(out, cands)  # fall back to input — never lose questions
+
     def test_project_then_judge_roundtrip(self):
         rec = {"question": "Which DB?"}
         with self._mock_raw('{"derivable_prob":0.2,"answers":[{"answer":"pg","prob":0.6},'
