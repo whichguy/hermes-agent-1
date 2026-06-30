@@ -281,7 +281,7 @@ _FALLBACK_TEMPLATE = """# Key Questions to Improve the Response
 {{baseline_plan}}
 
 ## Key questions, ranked by weight (answer these to improve the response)
-weight = exploration value = answerability × √(uncertainty × value-of-answering)
+weight = exploration value = √(uncertainty × value-of-answering)
 
 {{ranked_list}}
 
@@ -309,17 +309,13 @@ def _weight_clarification(rec):
     """Plain-language explanation of what a question's weight means — built from the
     score components, no extra model call."""
     ev = rec.get("evsi", 0.0)
-    ans = voi.clamp01(rec.get("answerability", 1.0))
     modal = rec.get("modal_answer") or {}
     p = voi.clamp01(modal.get("prob", 0.0))
     change = "substantially" if ev >= 0.50 else "moderately" if ev >= 0.30 else "only slightly"
-    how_answerable = ("readily answerable" if ans >= 0.7 else
-                      "answerable with some effort" if ans >= 0.4 else "hard to resolve")
     default = (modal.get("answer", "") or "—")[:70]
     return (f"answering would **{change}** improve the response "
             f"(value-of-answering {ev:.2f}); otherwise you'd assume “{default}” "
-            f"(~{(1.0 - p) * 100:.0f}% chance that's off in a way that matters); "
-            f"{how_answerable} (answerability {ans:.2f}).")
+            f"(~{(1.0 - p) * 100:.0f}% chance that's off in a way that matters).")
 
 
 def _ranked_list(bucket):
@@ -351,12 +347,12 @@ def render_markdown(result):
         pre = "_None above the pre-answer threshold — the problem is well enough " \
               "specified to proceed (resolve any ASSUME-DEFAULT items if convenient)._"
 
-    rows = ["| # | value | uncert | answer-value | answerable | rec | question | resolves | assume-if-skipped |",
-            "|---|------:|------:|------:|------:|-----|----------|----------|-------------------|"]
+    rows = ["| # | value | uncert | answer-value | rec | question | resolves | assume-if-skipped |",
+            "|---|------:|------:|------:|-----|----------|----------|-------------------|"]
     for i, r in enumerate(bucket):
         rows.append(
             f"| {i + 1} | {r['value']:.2f} | {r['u']:.2f} | {r['evsi']:.2f} | "
-            f"{r.get('answerability', 1.0):.2f} | {r.get('recommendation', '')} | "
+            f"{r.get('recommendation', '')} | "
             f"{r['question']} | {r.get('target', '') or '—'} | {_fmt_default(r)} |")
     table = "\n".join(rows) if bucket else "_No valuable questions found._"
 
@@ -432,14 +428,12 @@ def _render_trace_question(q):
     else:
         decision = rec or "—"
     lines += [
-        f"\nderivable_prob = {b['derivable_prob']:.2f} · answerability = {b['answerability']:.2f}\n",
+        f"\nderivable_prob = {b['derivable_prob']:.2f}\n",
         "**scoring (show your work):**  ",
         f"- uncertainty U = entropy {b['entropy']:.2f} × (1 − derivable {b['derivable_prob']:.2f}) "
         f"= **{b['u']:.3f}**  ",
         f"- value-of-answering (EVSI) = Σ P·Δplan·stakes = {ev} = **{b['evsi']:.3f}**  ",
-        f"- worth-if-resolved = √(U × answer-value) = √({b['u']:.3f} × {b['evsi']:.3f}) "
-        f"= **{b['intrinsic_value']:.3f}**  ",
-        f"- exploration value = answerability {b['answerability']:.2f} × {b['intrinsic_value']:.3f} "
+        f"- value = √(U × value-of-answering) = √({b['u']:.3f} × {b['evsi']:.3f}) "
         f"= **{b['value']:.3f}**  ",
         f"- decision: **{decision}**\n",
     ]

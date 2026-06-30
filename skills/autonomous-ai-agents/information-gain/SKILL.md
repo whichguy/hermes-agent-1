@@ -107,10 +107,10 @@ Use `--problem/-p` (not positional) when the text contains `--` or shell-special
 ### What it returns
 
 Given a prompt, a list of the **key questions ranked by weight** = exploration value =
-`answerability × √(uncertainty × value-of-answering)` — *how much answering each would improve your
+`√(uncertainty × value-of-answering)` — *how much answering each would improve your
 response to the prompt*. Each ranked question carries a **plain-language clarification of what its
-weight means** (how much it would improve the response, the assumption you'd otherwise make and its
-chance of being wrong, and how answerable it is), plus the recommendation (**PRE_ANSWER** ≥ 0.60 /
+weight means** (how much it would improve the response, and the assumption you'd otherwise make and
+its chance of being wrong), plus the recommendation (**PRE_ANSWER** ≥ 0.60 /
 **ASSUME_DEFAULT** ≥ 0.40). A detailed numeric table is included below the list. If nothing clears the
 bar, it says so — the prompt is already specified well enough for a good response. See
 `references/design-decisions.md` for the model.
@@ -120,11 +120,11 @@ bar, it says so — the prompt is already specified well enough for a good respo
 1. **Frame + baseline plan** (`question_gen_model`) — restate goal/decision and the plan you'd give
    *right now* (folding in any `--evidence`); everything is scored as change from this baseline.
 2. **Project answers** (`answer_model`, parallel) — plausible answers + probabilities, plus how
-   *derivable* each question is (already known?) and how *answerable* it is (resolvable if explored?).
+   *derivable* each question is (already inferable from the prompt?).
 3. **Judge** (`value_judge_model`, parallel) — per-answer plan-change × stakes vs the baseline.
 4. **Score / gate / diversify** (pure Python) — `value-of-answering (EVSI) = Σ P·Δplan·stakes`;
    `uncertainty U = entropy(answers)·(1−derivable)`; gate out the no-uncertainty/no-change cases;
-   `exploration value = answerability · √(U · EVSI)`; collapse same-`target` duplicates; MMR-rank.
+   `exploration value = √(U · EVSI)`; collapse same-`target` duplicates; MMR-rank.
    If the bucket is under `min_bucket_size`, generate another round (deduped) up to `max_rounds`.
 
 Full rationale + citations: `references/methodology.md`. Prompt contracts: `references/prompts.md`.

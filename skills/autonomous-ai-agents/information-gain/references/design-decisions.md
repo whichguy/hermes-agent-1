@@ -34,24 +34,25 @@ weighted by how likely that outcome is. This is the **EVSI** (Expected Value of 
 |---|---|---|
 | **uncertainty** (`U`) | is the answer unknown *and* reducible? `entropy(answers) × (1 − derivable_prob)` | 0–1 |
 | **value of answering** (`EVSI`) | regret you'd avoid, summed over the variety of answers (`Σ P·Δplan·stakes`) | 0–1 |
-| **answerability** | can it actually be resolved if you explore it? (vs. judgment-call / unknowable) | 0–1 |
 | **exploration value** (`value`) | the number you rank by | 0–1 |
 
 ## The formula
 
 ```
-exploration value = answerability × √(uncertainty × value-of-answering)
+exploration value = √(uncertainty × value-of-answering)
 ```
 
-= `P(you can resolve it) × (worth if resolved)`. Properties:
-- **answerability defaults to 1.0**, so if it isn't estimated the score is identical to the prior
-  `√(U × EVSI)` — no threshold recalibration needed. It only ever *discounts* hard-to-resolve
-  questions, sending the expensive answering budget to questions that are *both* high-regret-to-skip
-  *and* actually resolvable.
-- `uncertainty` and `answerability` are distinct: "I don't know it" vs "it's knowable at all." Both
-  gate the value.
+= `√(U × EVSI)`. Properties:
+- `value` is 0 if EITHER the uncertainty gate or the EVSI is 0 (the necessary-condition gate).
+- The geometric mean keeps it on an interpretable ~0–1 scale, so absolute thresholds (0.40/0.60)
+  are meaningful.
 - **Risk-neutral** by default (probability-weighted). A risk-averse tilt (flag a catastrophic-but-
   unlikely branch even when improbable) is a deliberate future option, not the default.
+
+> **Tried and removed: answerability.** An `answerability × …` multiplier (P a determinate answer is
+> obtainable if explored) was added and then removed after a benchmark showed it inert — pinned at
+> ~0.95 in 15/16 cells and reordering the ranking in 0/15 — because clarifying questions are almost
+> always answerable. It added a field + prompt complexity for no measured effect.
 
 ## The evidence loop (how multi-step depth happens)
 

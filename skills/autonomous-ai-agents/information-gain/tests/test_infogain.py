@@ -90,25 +90,6 @@ class TestVoiMath(unittest.TestCase):
         self.assertTrue(rec["gated_out"])
         self.assertEqual(rec["value"], 0.0)
 
-    def test_exploration_value_answerability_discount(self):
-        base = math.sqrt(0.81 * 0.49)
-        self.assertAlmostEqual(voi.exploration_value(0.81, 0.49, 1.0), base)  # default unchanged
-        self.assertAlmostEqual(voi.exploration_value(0.81, 0.49, 0.5), 0.5 * base)
-        self.assertEqual(voi.exploration_value(0.9, 0.9, 0.0), 0.0)  # unanswerable → 0
-
-    def test_score_record_answerability_scales_value(self):
-        ans = [_answer(0.6, 0.8, 0.7), _answer(0.4, 0.2, 0.3)]
-        r1 = {"answers": [dict(a) for a in ans], "derivable_prob": 0.1, "answerability": 1.0}
-        r2 = {"answers": [dict(a) for a in ans], "derivable_prob": 0.1, "answerability": 0.5}
-        voi.score_record(r1)
-        voi.score_record(r2)
-        self.assertAlmostEqual(r2["value"], 0.5 * r1["value"], places=4)
-        self.assertEqual(r1["answerability"], 1.0)
-        # default (missing answerability) behaves as 1.0
-        r3 = {"answers": [dict(a) for a in ans], "derivable_prob": 0.1}
-        voi.score_record(r3)
-        self.assertAlmostEqual(r3["value"], r1["value"], places=4)
-
     def test_score_breakdown_matches_and_explains(self):
         rec = {"answers": [_answer(0.6, 0.8, 0.7), _answer(0.4, 0.2, 0.3)],
                "derivable_prob": 0.1}
@@ -240,13 +221,12 @@ class TestPipelineMocked(unittest.TestCase):
             out = pipeline.consolidate_questions("p", cands, "fast")
         self.assertEqual(out, cands)  # fall back to input — never lose questions
 
-    def test_project_answers_parses_answerability(self):
+    def test_project_answers_parses_derivable(self):
         rec = {"question": "Q"}
-        with self._mock_raw('{"derivable_prob":0.2,"answerability":0.4,'
-                            '"answers":[{"answer":"a","prob":1.0}]}'):
+        with self._mock_raw('{"derivable_prob":0.2,"answers":[{"answer":"a","prob":1.0}]}'):
             pipeline.project_answers("p", {"goal": "g"}, rec, "fast", 5)
-        self.assertEqual(rec["answerability"], 0.4)
         self.assertEqual(rec["derivable_prob"], 0.2)
+        self.assertEqual(len(rec["answers"]), 1)
 
     def test_usage_counters_reset(self):
         pipeline.reset_usage()
@@ -355,7 +335,7 @@ class TestOrchestrationMocked(unittest.TestCase):
             "question": "Which datastore?", "target": "datastore", "recommendation": "PRE_ANSWER",
             "answers": [{"answer": "Postgres", "prob": 0.6, "delta_plan": 0.8, "stakes": 0.7},
                         {"answer": "Mongo", "prob": 0.4, "delta_plan": 0.2, "stakes": 0.3}],
-            "derivable_prob": 0.1, "answerability": 0.9})
+            "derivable_prob": 0.1})
         rec["recommendation"] = "PRE_ANSWER"
         md = infogain._ranked_list([rec])
         self.assertIn("weight", md)
@@ -379,7 +359,7 @@ class TestOrchestrationMocked(unittest.TestCase):
         self.assertIn("wall_seconds", result["usage"])
         md = infogain.render_markdown(result)
         self.assertIn("budget is $0", md)
-        self.assertIn("answerable", md)  # new column header
+        self.assertIn("answer-value", md)  # EVSI column header
 
     def test_trace_captures_show_your_work(self):
         cfg = self._cfg(max_rounds=1, questions_per_round=4, target_bucket_size=2,
@@ -401,8 +381,8 @@ class TestOrchestrationMocked(unittest.TestCase):
         self.assertIn("evsi_terms", q0["breakdown"])
         md = infogain.render_trace(result)
         self.assertIn("show your work", md)
-        self.assertIn("exploration value =", md)
-        self.assertIn("answerability", md)
+        self.assertIn("value = √(U", md)
+        self.assertIn("value-of-answering", md)
 
 
 # ── live (real Ollama) ────────────────────────────────────────────────────────

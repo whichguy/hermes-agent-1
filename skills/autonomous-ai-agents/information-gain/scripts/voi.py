@@ -10,13 +10,12 @@ Scoring is grounded in the decision-theoretic Expected Value of Sample Informati
 
     value-of-answering EVSI(q) ≈ Σ_a P(a)·response_change(a)·stakes(a)  # regret avoided
     uncertainty U = normalized_entropy(P(a))·(1 − derivable_prob)       # reducible/epistemic
-    exploration value(q) = answerability · √(U · EVSI)                  # the ranking number
+    exploration value(q) = √(U · EVSI)                                  # the ranking number
 
 `value` is 0 if EITHER the uncertainty gate U or the EVSI is 0 — encoding Howard's
 "information has value only if it could change the optimal decision" plus the necessary
 conditions (must be uncertain, must be reducible). The geometric mean keeps it on an
-interpretable ~0..1 scale (so absolute thresholds like 0.40 are meaningful); answerability
-then discounts questions you couldn't resolve even if you tried (defaults to 1.0).
+interpretable ~0..1 scale (so absolute thresholds like 0.40 are meaningful).
 
 Vocabulary note: the per-answer key `delta_plan` is the legacy name for the response-change
 (how much the answer would change your response) — kept stable to avoid churn.
@@ -124,16 +123,6 @@ def question_value(u, e):
     return math.sqrt(clamp01(u) * clamp01(e))
 
 
-def exploration_value(u, e, answerability=1.0):
-    """The ranking number = answerability × √(U · value-of-answering).
-
-    = P(you can actually resolve it) × (worth if resolved). `answerability` defaults
-    to 1.0, so omitting it reproduces the plain √(U·EVSI) score — no threshold
-    recalibration needed; it only ever DISCOUNTS hard-to-resolve questions.
-    """
-    return clamp01(answerability) * question_value(u, e)
-
-
 def is_gated_out(u, e, eps=EPS):
     """Discard if any necessary condition is ~0: no reducible uncertainty, or no
     expected (probability-weighted) plan-change-times-stakes."""
@@ -150,12 +139,9 @@ def score_record(rec):
     answers = rec.get("answers") or []
     u = uncertainty(answers, rec.get("derivable_prob", 0.0))
     e = evsi(answers)
-    a = clamp01(rec.get("answerability", 1.0))
     rec["u"] = u
     rec["evsi"] = e  # value of answering
-    rec["answerability"] = a
-    rec["intrinsic_value"] = question_value(u, e)  # worth if resolved
-    rec["value"] = exploration_value(u, e, a)  # the ranking number
+    rec["value"] = question_value(u, e)  # the ranking number = √(U · EVSI)
     rec["gated_out"] = is_gated_out(u, e)
     rec["modal_answer"] = modal_answer(answers)
     return rec
@@ -181,16 +167,13 @@ def score_breakdown(rec):
         terms.append({"answer": a.get("answer", ""), "p": round(p, 4),
                       "delta_plan": dp, "stakes": st, "term": round(p * dp * st, 4)})
     e = evsi(answers)
-    a = clamp01(rec.get("answerability", 1.0))
     return {
         "entropy": round(ent, 4),
         "derivable_prob": derivable,
         "u": round(u, 4),
         "evsi_terms": terms,
         "evsi": round(e, 4),  # value of answering
-        "answerability": round(a, 4),
-        "intrinsic_value": round(question_value(u, e), 4),  # √(U · value-of-answering)
-        "value": round(exploration_value(u, e, a), 4),  # exploration value (the rank)
+        "value": round(question_value(u, e), 4),  # exploration value = √(U · EVSI)
     }
 
 

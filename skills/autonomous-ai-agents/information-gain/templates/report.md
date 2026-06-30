@@ -13,7 +13,7 @@
 ## ⭐ Key questions, ranked by weight — answer these to improve the response
 
 Each **weight** = *exploration value* = how much answering the question is expected to improve your
-response to the prompt = **answerability × √(uncertainty × value-of-answering)**. Higher = answering
+response to the prompt = **√(uncertainty × value-of-answering)**. Higher = answering
 it most improves the response, so answer it sooner.
 
 {{ranked_list}}
@@ -23,7 +23,7 @@ it most improves the response, so answer it sooner.
 <details><summary>Detailed scores per question</summary>
 
 `uncert` = unknown & reducible · `answer-value` (EVSI) = Σ P(answer)·response-change·stakes ·
-`answerable` = resolvable if explored · `assume-if-skipped` = the most-likely answer to proceed on.
+`assume-if-skipped` = the most-likely answer to proceed on.
 
 {{table}}
 

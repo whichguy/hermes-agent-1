@@ -7,7 +7,7 @@ Ollama model, mostly via direct /api/chat raw calls run in parallel):
 
     0. frame_and_plan   — restate goal/response-type/success + a baseline response
     1. generate_questions — find candidate questions that would change the response
-    2. project_answers  — plausible answers + probabilities + derivability + answerability
+    2. project_answers  — plausible answers + probabilities + derivability
     3. judge_plan_change — per-answer response-change and stakes vs the baseline response
 
 Vocabulary note: the JSON keys `baseline_plan` and `delta_plan` are legacy names for the
@@ -248,23 +248,13 @@ def answers_prompt(problem, framing, question, m, evidence=None):
         f"\nGOAL: {framing.get('goal', '')}\n"
         f"QUESTION: {question}\n\n"
         f"Enumerate the {m} most plausible DISTINCT answers. For each, estimate a "
-        "probability (0-1) that it is the true answer given the prompt. Also estimate two "
-        "DIFFERENT things: (a) derivable_prob — can you ALREADY infer the answer from the "
-        "prompt + established facts (so asking adds nothing); and (b) answerability — IF you "
-        "went and investigated, could a determinate answer be obtained at all.\n\n"
+        "probability (0-1) that it is the true answer given the prompt. Also estimate "
+        "derivable_prob — can you ALREADY infer the answer from the prompt + established "
+        "facts (so asking adds nothing)?\n\n"
         "Return ONLY a JSON object:\n"
-        '{"derivable_prob": float, "answerability": float, '
-        '"answers": [{"answer": str, "prob": float}, ...]}\n'
+        '{"derivable_prob": float, "answers": [{"answer": str, "prob": float}, ...]}\n'
         "- derivable_prob: 0-1, probability the answer is ALREADY inferable from the prompt + "
         "established facts (high = you basically know it; asking buys little).\n"
-        "- answerability: 0-1, probability a DETERMINATE answer exists and is obtainable with "
-        "reasonable effort. Anchor it: HIGH (≥0.8) = facts a stakeholder or system can look up "
-        "or simply decide (budget, current tools, user counts, policies, the asker's own "
-        "preferences/constraints). LOW (≤0.3) = predictions of future or external events "
-        "(market/interest-rate moves, competitor or counterparty behavior, adoption) or "
-        "value-judgments with no determinate answer. Most clarifying questions are high; reserve "
-        "low scores for genuine forecasts/unknowables. A question can be unknown now "
-        "(low derivable_prob) yet still highly answerable.\n"
         f"- Provide 2 to {m} answers; probabilities need not sum to exactly 1.\n"
         "Respond ONLY with the JSON object."
     )
@@ -410,23 +400,20 @@ def consolidate_questions(problem, candidates, model, timeout=150, sink=None):
 
 
 def project_answers(problem, framing, rec, model, m, timeout=120, capture=False, evidence=None):
-    """Stage 2 (single question). Mutates rec with answers[] + derivable_prob + answerability."""
+    """Stage 2 (single question). Mutates rec with answers[] + derivable_prob."""
     sink = [] if capture else None
     obj, err = _call_json(model, answers_prompt(problem, framing, rec["question"], m, evidence),
                           timeout, num_predict=600, sink=sink)
     answers = []
     derivable = 0.0
-    answerability = 1.0
     if isinstance(obj, dict):
         derivable = obj.get("derivable_prob", 0.0)
-        answerability = obj.get("answerability", 1.0)
         for a in (obj.get("answers") or []):
             if isinstance(a, dict) and (a.get("answer") or "").strip():
                 answers.append({"answer": a["answer"].strip(),
                                 "prob": a.get("prob", 0.0)})
     rec["answers"] = answers
     rec["derivable_prob"] = derivable
-    rec["answerability"] = answerability
     if err:
         rec["error"] = err
     if capture and sink:

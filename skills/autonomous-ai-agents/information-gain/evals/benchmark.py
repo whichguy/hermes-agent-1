@@ -62,13 +62,6 @@ def build_cfg(overrides):
     return cfg
 
 
-def _answerability_reorder(bucket):
-    """How many positions change if we rank by intrinsic_value (no answerability) vs value."""
-    by_v = [r["question"] for r in sorted(bucket, key=lambda r: -r.get("value", 0))]
-    by_i = [r["question"] for r in sorted(bucket, key=lambda r: -r.get("intrinsic_value", r.get("value", 0)))]
-    return sum(1 for a, b in zip(by_v, by_i) if a != b)
-
-
 def _crit(verdict, name):
     c = (verdict.get("judged") or {}).get("criteria") or {}
     return (c.get(name) or {}).get("score")
@@ -81,7 +74,6 @@ def run_cell(prompt, cname, rep, judge_model, judge_timeout):
     b = result["bucket"]
     u = result["usage"]
     vals = [r.get("value", 0) for r in b]
-    ans = [r.get("answerability", 1.0) for r in b]
     return {
         "prompt": prompt["id"], "config": cname, "rep": rep,
         "run_judge": cfg["value_judge_model"], "adjudicator": judge_model,
@@ -90,9 +82,6 @@ def run_cell(prompt, cname, rep, judge_model, judge_timeout):
         "top_value": round(max(vals), 3) if vals else 0.0,
         "mean_value": round(statistics.mean(vals), 3) if vals else 0.0,
         "n_pre_answer": sum(1 for r in b if r.get("recommendation") == "PRE_ANSWER"),
-        "mean_answerability": round(statistics.mean(ans), 3) if ans else 1.0,
-        "min_answerability": round(min(ans), 3) if ans else 1.0,
-        "answerability_reorder": _answerability_reorder(b),
         "calls": u["calls"], "in_tok": u["input_tokens"], "out_tok": u["output_tokens"],
         "total_tok": u["input_tokens"] + u["output_tokens"],
         "wall_s": u["wall_seconds"], "model_s": round(u.get("model_seconds", 0), 1),
@@ -137,8 +126,13 @@ def main(argv=None):
                 rows.append(row)
                 print(f"  ✓ {tag}: bucket={row.get('bucket')} acceptable={row.get('acceptable')} "
                       f"tok={row.get('total_tok')} wall={row.get('wall_s')}s", file=sys.stderr, flush=True)
+                if args.out:  # incremental save — survive a container/process restart
+                    with open(args.out, "w") as f:
+                        json.dump({"rows": rows, "n_cells": len(rows), "partial": True,
+                                   "elapsed_s": round(time.time() - t0, 1)}, f, indent=2, default=str)
 
-    out = {"rows": rows, "n_cells": len(rows), "elapsed_s": round(time.time() - t0, 1)}
+    out = {"rows": rows, "n_cells": len(rows), "partial": False,
+           "elapsed_s": round(time.time() - t0, 1)}
     payload = json.dumps(out, indent=2, default=str)
     if args.out:
         with open(args.out, "w") as f:
