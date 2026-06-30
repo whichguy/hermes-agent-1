@@ -257,10 +257,14 @@ def answers_prompt(problem, framing, question, m, evidence=None):
         '"answers": [{"answer": str, "prob": float}, ...]}\n'
         "- derivable_prob: 0-1, probability the answer is ALREADY inferable from the prompt + "
         "established facts (high = you basically know it; asking buys little).\n"
-        "- answerability: 0-1, probability a determinate answer EXISTS and is obtainable with "
-        "reasonable effort (1 = a stakeholder/system can readily provide it; low = speculative, "
-        "judgment-call, or unknowable even if you try). Note: a question can be unknown now "
-        "(low derivable_prob) yet still high answerability.\n"
+        "- answerability: 0-1, probability a DETERMINATE answer exists and is obtainable with "
+        "reasonable effort. Anchor it: HIGH (≥0.8) = facts a stakeholder or system can look up "
+        "or simply decide (budget, current tools, user counts, policies, the asker's own "
+        "preferences/constraints). LOW (≤0.3) = predictions of future or external events "
+        "(market/interest-rate moves, competitor or counterparty behavior, adoption) or "
+        "value-judgments with no determinate answer. Most clarifying questions are high; reserve "
+        "low scores for genuine forecasts/unknowables. A question can be unknown now "
+        "(low derivable_prob) yet still highly answerable.\n"
         f"- Provide 2 to {m} answers; probabilities need not sum to exactly 1.\n"
         "Respond ONLY with the JSON object."
     )
