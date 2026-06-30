@@ -129,6 +129,28 @@ bar, it says so — the prompt is already specified well enough for a good respo
 
 Full rationale + citations: `references/methodology.md`. Prompt contracts: `references/prompts.md`.
 
+## Iterate-context wrapper (`scripts/iterate.py`) — optional, automated loop
+
+The ranker above is report-only. `iterate.py` **automates** the evidence loop end-to-end: rank →
+research the **top-K by rank** with the grounded `ask` agent (full Hermes agent, all tools, distilled
+fact back) → append each fact (or `NOT_FOUND` gap) to one growing context → re-rank → stop at a
+relative floor or `max_rounds` → produce a final response.
+
+```bash
+# Runs INSIDE the hermes container (the grounded answerer shells out to `hermes`):
+python3 ${HERMES_SKILL_DIR}/scripts/iterate.py --problem "<task>" --k 6 --max-rounds 3 --floor 0.12
+python3 ${HERMES_SKILL_DIR}/scripts/iterate.py --problem "<task>" --dry-run   # loop logic, no model calls
+```
+
+- **`cwd` matters.** The grounded answerer researches in the process cwd — run it **from the user's
+  project** (or set `answer_cwd`) so it investigates the real codebase, not the install dir.
+- **`NOT_FOUND`** (genuinely user-only questions, e.g. a preference) are recorded as gaps; the responder
+  proceeds with stated assumptions. No revival machinery (v1 — YAGNI).
+- **Status (v1, validated with caveats):** the ranking predicts realized improvement (agentic ρ 0.66);
+  end-to-end value is **task-dependent** — it helps where a clarification *shapes* the work (build/spec)
+  and is redundant where a capable agent self-investigates (debug). `--validate baseline|top|bottom` is
+  the A/B test harness. See `references/evsi-validation-findings.md`.
+
 ## Tuning
 
 **Mode presets:** `--mode focus` (default — prioritized top few) or `--mode breadth` (wider

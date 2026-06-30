@@ -438,7 +438,9 @@ class TestLive(unittest.TestCase):
             self.assertGreaterEqual(r["value"], 0.0)
             self.assertLessEqual(r["value"], 1.0)
         # report renders without error
-        self.assertIn("Information-Gain Analysis", infogain.render_markdown(result))
+        md = infogain.render_markdown(result)
+        self.assertIn("Key Questions", md)
+        self.assertIn("Prompt:", md)
 
 
 if __name__ == "__main__":
