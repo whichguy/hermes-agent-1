@@ -19,6 +19,9 @@ judge them blind for relevance to the prompt:
 Pass condition: `top2 > low2 ≥ baseline`. If answering top-ranked questions doesn't beat answering
 low-ranked ones, the rating isn't earning its place and we recalibrate/re-elicit. This study also
 *builds the answerer + response-generator that Phase 2 needs* — so it de-risks the wrapper directly.
+**It also yields `diminishing_floor` from evidence:** answer questions across the whole `value`
+spectrum (not just top-2 vs low-2) and plot **realized improvement vs question `value`** — the floor is
+where improvement flattens to ~0. Set the cap from the curve, don't guess it.
 
 **1.2 Post-hoc formula ablations (near-free).** We already store per-question components (U, P, Δ,
 stakes). Re-derive rankings under alternatives — EVSI-only (drop U), max-Δ vs P-weighted mean — and
@@ -40,33 +43,63 @@ A wrapper/orchestrator around the (validated) info-gain primitive that builds up
 convergence and then responds. Keeps info-gain report-only; the wrapper does the answering + looping
 + responding (primitive-vs-orchestrator discipline).
 
+**Why one continuously-growing context (the core principle).** Every round, the LLM conditions on the
+*entire* accumulated context — prompt + all prior questions + every tombstone (answered facts *and*
+known gaps). As tombstones accrue, the model's implicit posterior over the problem sharpens, so each
+new round's questions, answer-projections, research, and the final response are all conditioned on
+everything established so far. The single growing context **is** the substrate on which the LLM's
+Bayesian updating operates continuously — which is exactly why we **always append** (never fragment or
+reset the context) and why the tombstones must be **clean, high-signal facts**. That is the whole point
+of the `ask`-isolation: the noisy research reasoning stays out of the loop; only the distilled fact
+enters the context the model continuously reasons over.
+
 **Loop:**
 ```
-evidence = []                                   # accumulated "tombstones"
+tombstones = []          # each: {question, status: ANSWERED | NOT_FOUND, answer?, ctx_version}
+ctx_version = 0
 for round in range(max_rounds):
-    ranked = infogain.run(prompt, cfg, evidence=evidence)      # rank questions given current context
-    top = ranked.bucket[:K]                                     # K default 2
+    evidence = facts(tombstones)                               # answered facts + known-gaps — ONE shared context
+    ranked = infogain.run(prompt, evidence=evidence)           # rank, given everything known so far
+    top = [q for q in ranked.bucket if eligible(q, tombstones, ctx_version)][:K]
     if not top or top[0].value < diminishing_floor: break      # diminishing returns -> stop
     for q in top:
-        ans = ANSWERER(q, prompt, evidence)                    # see fork below
-        evidence.append(f"{q.question} -> {ans}")              # tombstone the resolved question
-final = RESPONDER(prompt, evidence)                            # the payoff: best response to the prompt
-return { final, evidence, trail }                              # trail = per-round questions/answers/value
+        res = ask_research(q, prompt, evidence)                # `ask` skill: isolated ctx, returns a distilled fact
+        if res.found:
+            tombstones += [(q, ANSWERED, res.answer, ctx_version)]; ctx_version += 1   # context grew
+        else:
+            tombstones += [(q, NOT_FOUND, ctx_version)]        # record the gap; don't re-research at this version
+final = ask_respond(prompt, evidence)                          # best response, using the enriched context
+return { final, tombstones }
 ```
 
 **Components:**
-- **ANSWERER = GROUNDED research (decided).** Each top question is answered by *real lookup*, not the
-  model's own guess. Cleanest implementation that's self-contained and benchmarkable: reuse the `ask`
-  skill's `model_utils.dispatch_single(model, "Research and answer concisely: <q> …", toolsets="web,file")`
-  — a full Hermes agent run with web tools that returns a grounded answer. (We already depend on
-  model_utils.) It returns `{answer, found}`; if research can't resolve the question, **don't tombstone
-  it** — leave it open (an empirical version of "answerability"). Alternative backend = a direct
-  web-search API if we want to skip the agent loop.
-- **RESPONDER** — final step: "given the prompt + all established (researched) facts, produce the best
-  response." Either a strong Ollama call or a `dispatch_single` with the enriched context.
-- **CONVERGENCE** — stop when the round's top `value` < `diminishing_floor`, the bucket empties,
-  `max_rounds` is hit, or top value < α × round-1 top (relative plateau).
-- **Tombstones** = the resolved Q→answer facts, fed back via the existing `evidence` mechanism.
+- **ANSWERER = the `ask` skill (decided) — used to stay cheap and NOT pollute context.** Each research
+  call is `ask` / `model_utils.dispatch_single`: a full Hermes agent in its OWN isolated context with
+  **ALL tools available** (file, web, terminal, …) — the research agent is unconstrained in *how* it
+  finds the answer. The heavy research reasoning stays in that subprocess; **only the distilled answer**
+  (or `NOT_FOUND: <brief reason>`) returns and gets tombstoned. So the main iterate-context holds just
+  the prompt + clean tombstones — lean, never bloated with research transcripts. Ask for a *concise*
+  answer to keep the returned fact tight.
+- **RESPONDER** — final step: "given the prompt + all established facts + known gaps, produce the best
+  response." (A `dispatch_single` or strong Ollama call over the enriched context.)
+- **CONVERGENCE + cap diagnostics** — stop when the round's top `value` < `diminishing_floor` or no
+  eligible questions remain (**natural convergence**), OR when `K` / `max_rounds` is hit (**artificial
+  cap**). Always record a **`stop_reason`** and flag **whether an artificial cap bound the run before
+  it naturally ran dry** — i.e. `max_rounds` hit while top value ≥ floor, or rounds where *more than K*
+  high-value questions were available (K rate-limited us). This is what tells us if the caps are cutting
+  off real value vs. the loop genuinely converging.
+
+**Tombstone state machine (the refinement):**
+- **ANSWERED** (`Q → A`): a discovered fact. Enters the context; the evidence mechanism makes the
+  question derivable so it drops out of future rounds.
+- **NOT_FOUND** (`Q → not discoverable at this context state`): *informative, not a failure* — a known
+  gap that shapes both the final response and the next questions. Two rules:
+  - **Don't re-research it at the same `ctx_version`** (no wasted budget).
+  - **Revive it when the context grows.** Every ANSWERED tombstone bumps `ctx_version`; a NOT_FOUND
+    question attempted at an older version becomes **eligible again**, because a newly-discovered fact
+    may open a path to it ("if we discover another path, the question could be answered"). `eligible()`
+    enforces both rules. *(Likely a small addition to info-gain: pass NOT_FOUND questions as a
+    "known gaps" list so generation neither re-asks them nor treats them as resolved.)*
 
 **Where it lives:** `scripts/iterate.py` in this skill (composes `infogain.run` + `dispatch_single`
 research + responder); promote to its own `clarify-and-respond` skill if it grows. Info-gain stays
@@ -78,6 +111,12 @@ research calls ≈ 3–6 min/run, dominating cost. Implications to decide: cap r
 researched facts, and make the diminishing-returns floor *aggressive* so we don't pay to research
 low-value questions.
 
-**Open knobs (to set during refine):** research model + toolsets · `diminishing_floor` · K per round ·
-`max_rounds` · whether research that returns "not found" still counts toward convergence · final
-deliverable = the response, or response + the researched evidence trail.
+**Decided:** answerer = `ask` (isolated context, distilled answer), **all tools available** to the
+research agent · NOT_FOUND recorded as a tombstone + revivable when context grows · context is the
+single continuously-growing shared state · **K = 6** (a cap for now) · everything **configurable** ·
+the loop **reports `stop_reason` and flags when an artificial cap (K / max_rounds) bound it before
+natural convergence**.
+**Determined by evidence, not guessed:** `diminishing_floor` — Phase 1 measures where answering stops
+improving the response (the improvement-vs-`value` curve); the floor is set from that, not assumed.
+**Still to set:** research model · `max_rounds` cap · final deliverable (response, or response +
+tombstone trail).
