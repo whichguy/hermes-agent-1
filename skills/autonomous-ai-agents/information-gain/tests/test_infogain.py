@@ -338,9 +338,22 @@ class TestOrchestrationMocked(unittest.TestCase):
              mock.patch.object(pipeline, "judge_plan_change_batch", side_effect=lambda p, f, b, recs, *a, **k: recs):
             result = infogain.run("p", cfg)
         md = infogain.render_markdown(result)
-        self.assertIn("Information-Gain Analysis", md)
-        self.assertIn("Pre-answer these", md)
-        self.assertIn("exploration value", md)
+        self.assertIn("Key Questions to Improve the Response", md)
+        self.assertIn("ranked by weight", md)
+        self.assertIn("what the weight means", md)
+
+    def test_ranked_list_shows_weight_and_clarification(self):
+        rec = voi.score_record({
+            "question": "Which datastore?", "target": "datastore", "recommendation": "PRE_ANSWER",
+            "answers": [{"answer": "Postgres", "prob": 0.6, "delta_plan": 0.8, "stakes": 0.7},
+                        {"answer": "Mongo", "prob": 0.4, "delta_plan": 0.2, "stakes": 0.3}],
+            "derivable_prob": 0.1, "answerability": 0.9})
+        rec["recommendation"] = "PRE_ANSWER"
+        md = infogain._ranked_list([rec])
+        self.assertIn("weight", md)
+        self.assertIn("what the weight means", md)
+        self.assertIn("Postgres", md)  # modal answer named in the clarification
+        self.assertIn("already specified", infogain._ranked_list([]))  # empty bucket
 
     def test_evidence_in_result_and_render(self):
         cfg = self._cfg(max_rounds=1, questions_per_round=4, target_bucket_size=2,

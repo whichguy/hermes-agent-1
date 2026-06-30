@@ -1,30 +1,33 @@
-# Information-Gain Analysis
+# Key Questions to Improve the Response
 
-**Problem:** {{problem}}
+**Prompt:** {{problem}}
 {{evidence}}
 - **Goal:** {{goal}}
-- **Decision:** {{decision}}
+- **Response type:** {{decision}}
 - **Success criteria:** {{success_criteria}}
 
-**Baseline plan** (best plan given the problem + any established facts — the baseline we measure value against):
+**Baseline response** (the best answer to the prompt right now — what we measure value against):
 
 {{baseline_plan}}
 
-## ⭐ Pre-answer these first (highest value, worth the cost of answering)
+## ⭐ Key questions, ranked by weight — answer these to improve the response
 
-{{preanswer_list}}
+Each **weight** = *exploration value* = how much answering the question is expected to improve your
+response to the prompt = **answerability × √(uncertainty × value-of-answering)**. Higher = answering
+it most improves the response, so answer it sooner.
 
-## Ranked questions by exploration value
+{{ranked_list}}
 
-**exploration value = answerability × √(uncertainty × value-of-answering)** — i.e.
-*P(you can resolve it) × worth-if-resolved*. **uncert** = unknown & reducible · **answer-value**
-(EVSI) = Σ P(answer)·plan-change·stakes, the regret you'd avoid by answering · **answerable** = can it
-actually be resolved if you explore it. `assume-if-skipped` is the most-likely answer to proceed on
-if you disregard the question.
+{{discarded_note}}
+
+<details><summary>Detailed scores per question</summary>
+
+`uncert` = unknown & reducible · `answer-value` (EVSI) = Σ P(answer)·response-change·stakes ·
+`answerable` = resolvable if explored · `assume-if-skipped` = the most-likely answer to proceed on.
 
 {{table}}
 
-{{discarded_note}}
+</details>
 
 ---
 {{meta}}

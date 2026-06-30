@@ -264,24 +264,28 @@ def _template():
         return _FALLBACK_TEMPLATE
 
 
-_FALLBACK_TEMPLATE = """# Information-Gain Analysis
+_FALLBACK_TEMPLATE = """# Key Questions to Improve the Response
 
-**Problem:** {{problem}}
+**Prompt:** {{problem}}
 {{evidence}}
 **Goal:** {{goal}}
-**Decision:** {{decision}}
+**Response type:** {{decision}}
 
-**Baseline plan (problem + established facts):**
+**Baseline response (best answer right now):**
 {{baseline_plan}}
 
-## Pre-answer these first
-{{preanswer_list}}
+## Key questions, ranked by weight (answer these to improve the response)
+weight = exploration value = answerability × √(uncertainty × value-of-answering)
 
-## Ranked questions by exploration value
-exploration value = answerability × √(uncertainty × value-of-answering)
-{{table}}
+{{ranked_list}}
 
 {{discarded_note}}
+
+<details><summary>Detailed scores</summary>
+
+{{table}}
+
+</details>
 
 ---
 {{meta}}
@@ -293,6 +297,39 @@ def _fmt_default(rec):
     if not m:
         return "—"
     return f"{m.get('answer', '')[:80]} (p≈{voi.clamp01(m.get('prob', 0)):.2f})"
+
+
+def _weight_clarification(rec):
+    """Plain-language explanation of what a question's weight means — built from the
+    score components, no extra model call."""
+    ev = rec.get("evsi", 0.0)
+    ans = voi.clamp01(rec.get("answerability", 1.0))
+    modal = rec.get("modal_answer") or {}
+    p = voi.clamp01(modal.get("prob", 0.0))
+    change = "substantially" if ev >= 0.50 else "moderately" if ev >= 0.30 else "only slightly"
+    how_answerable = ("readily answerable" if ans >= 0.7 else
+                      "answerable with some effort" if ans >= 0.4 else "hard to resolve")
+    default = (modal.get("answer", "") or "—")[:70]
+    return (f"answering would **{change}** improve the response "
+            f"(value-of-answering {ev:.2f}); otherwise you'd assume “{default}” "
+            f"(~{(1.0 - p) * 100:.0f}% chance that's off in a way that matters); "
+            f"{how_answerable} (answerability {ans:.2f}).")
+
+
+def _ranked_list(bucket):
+    """The headline output: key questions ranked by weight, each with a clarification
+    of what its weight means."""
+    if not bucket:
+        return ("_No questions worth answering — the prompt is already specified well enough "
+                "for a good response._")
+    out = []
+    for i, r in enumerate(bucket):
+        out.append(
+            f"{i + 1}. **[weight {r['value']:.2f}]** {r['question']}  "
+            f"_({r.get('recommendation', '')})_\n"
+            f"   - *what the weight means:* {_weight_clarification(r)}\n"
+            f"   - *resolves:* {r.get('target', '') or '—'}")
+    return "\n".join(out)
 
 
 def render_markdown(result):
@@ -350,6 +387,7 @@ def render_markdown(result):
         "{{success_criteria}}": crit_str or "—",
         "{{baseline_plan}}": fr.get("baseline_plan", "") or "—",
         "{{preanswer_list}}": pre,
+        "{{ranked_list}}": _ranked_list(bucket),
         "{{table}}": table,
         "{{discarded_note}}": note,
         "{{meta}}": meta,

@@ -165,17 +165,18 @@ def _evidence_block(evidence, instruction):
 
 def frame_prompt(problem, evidence=None):
     return (
-        "You are scoping an underspecified problem BEFORE any work begins.\n\n"
-        f"PROBLEM:\n{problem}\n"
-        f"{_evidence_block(evidence, 'treat as known facts and fold into the baseline plan')}"
+        "You are preparing to RESPOND to a prompt. First scope it: what response does it call "
+        "for, and what is the best you'd say right now?\n\n"
+        f"PROMPT:\n{problem}\n"
+        f"{_evidence_block(evidence, 'treat as known facts and fold into the baseline response')}"
         "\nReturn ONLY a JSON object:\n"
         '{"goal": str, "decision": str, "success_criteria": [str], "baseline_plan": str}\n'
-        "- goal: the underlying objective in one sentence.\n"
-        "- decision: the main decision/approach that must be made.\n"
-        "- success_criteria: 2-4 short bullet strings for a good outcome.\n"
-        "- baseline_plan: the best recommended plan GIVEN THE PROBLEM AND ANY ESTABLISHED "
-        "FACTS ABOVE (assume the most likely interpretation of remaining ambiguity; 2-5 "
-        "sentences). This baseline is what we measure information value against.\n"
+        "- goal: the underlying objective of the prompt in one sentence.\n"
+        "- decision: the kind of response/answer the prompt calls for.\n"
+        "- success_criteria: 2-4 short bullet strings for a good response.\n"
+        "- baseline_plan: the best response/answer you would give to the prompt RIGHT NOW, "
+        "given it and any established facts above (assume the most likely interpretation of "
+        "remaining ambiguity; 2-5 sentences). This baseline is what we measure value against.\n"
         "Respond ONLY with the JSON object."
     )
 
@@ -189,16 +190,16 @@ def questions_prompt(problem, framing, n, avoid=None, evidence=None):
             f"{bullets}\n"
         )
     return (
-        "You are interrogating an underspecified problem to find what is worth "
-        "clarifying BEFORE doing the work.\n\n"
-        f"PROBLEM:\n{problem}\n"
+        "You are finding the key questions whose answers would most improve a RESPONSE to "
+        "a prompt.\n\n"
+        f"PROMPT:\n{problem}\n"
         f"{_evidence_block(evidence, 'resolved — do NOT ask about these again')}"
         f"\nGOAL: {framing.get('goal', '')}\n"
-        f"DECISION: {framing.get('decision', '')}\n"
+        f"RESPONSE TYPE: {framing.get('decision', '')}\n"
         f"{avoid_block}\n"
         f"Propose {n} DISTINCT key questions whose answers are currently unknown and "
-        "could change the recommended approach. Cover DIFFERENT hidden assumptions; "
-        "avoid near-duplicates.\n\n"
+        "would change or improve the response to this prompt. Cover DIFFERENT hidden "
+        "assumptions; avoid near-duplicates.\n\n"
         "Return ONLY a JSON object:\n"
         '{"questions": [{"question": str, "type": str, "why": str, "target": str}, ...]}\n'
         "- type: one of [scope, constraint, audience, data, integration, risk, "
@@ -212,9 +213,8 @@ def questions_prompt(problem, framing, n, avoid=None, evidence=None):
 
 def answers_prompt(problem, framing, question, m, evidence=None):
     return (
-        "Project the plausible answers to a clarifying question about an "
-        "underspecified problem.\n\n"
-        f"PROBLEM:\n{problem}\n"
+        "Project the plausible answers to a clarifying question about a prompt.\n\n"
+        f"PROMPT:\n{problem}\n"
         f"{_evidence_block(evidence, 'known; if they answer the question, derivable_prob is high')}"
         f"\nGOAL: {framing.get('goal', '')}\n"
         f"QUESTION: {question}\n\n"
@@ -240,19 +240,19 @@ def judge_prompt(problem, framing, baseline_plan, question, answers):
         f"{i + 1}. {a.get('answer', '')}" for i, a in enumerate(answers)
     )
     return (
-        "Estimate how much each possible answer would change the recommended plan, "
-        "and the cost of guessing wrong.\n\n"
-        f"PROBLEM:\n{problem}\n\n"
+        "Estimate how much each possible answer would change your RESPONSE to the prompt, "
+        "and the cost of answering wrong.\n\n"
+        f"PROMPT:\n{problem}\n\n"
         f"GOAL: {framing.get('goal', '')}\n\n"
-        "BASELINE PLAN (assuming the most likely interpretation):\n"
+        "BASELINE RESPONSE (your best answer to the prompt right now):\n"
         f"{baseline_plan}\n\n"
         f"QUESTION: {question}\n\n"
         f"POSSIBLE ANSWERS:\n{enumerated}\n\n"
         "For EACH answer, in the SAME ORDER, judge two 0-1 scores:\n"
-        "- delta_plan: how much the recommended plan would CHANGE if this answer is "
-        "true (0 = identical plan, 1 = completely different approach).\n"
-        "- stakes: the cost/harm of having proceeded on the BASELINE plan if this "
-        "answer is actually true (0 = harmless, 1 = severe rework or failure).\n\n"
+        "- delta_plan: how much your RESPONSE would CHANGE if this answer is true "
+        "(0 = identical response, 1 = completely different response).\n"
+        "- stakes: the cost/harm of having answered with the BASELINE response if this "
+        "answer is actually true (0 = harmless, 1 = severely wrong or misleading).\n\n"
         "Return ONLY a JSON object:\n"
         '{"answers": [{"delta_plan": float, "stakes": float}, ...]}\n'
         "with exactly one entry per answer, in the given order.\n"

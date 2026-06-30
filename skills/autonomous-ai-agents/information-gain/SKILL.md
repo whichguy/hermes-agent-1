@@ -106,12 +106,14 @@ Use `--problem/-p` (not positional) when the text contains `--` or shell-special
 
 ### What it returns
 
-A ranked table of questions by **exploration value = answerability × √(uncertainty ×
-value-of-answering)** — *P(you can resolve it) × worth-if-resolved* — with the recommendation
-(**PRE_ANSWER** ≥ 0.60 / **ASSUME_DEFAULT** ≥ 0.40) and an `assume-if-skipped` default (the
-most-likely projected answer to proceed on if you disregard the question). The "Pre-answer these
-first" section is the actionable shortlist. If the bucket can't reach `min_bucket_size`, it says so
-— the problem is already well-specified. See `references/design-decisions.md` for the model.
+Given a prompt, a list of the **key questions ranked by weight** = exploration value =
+`answerability × √(uncertainty × value-of-answering)` — *how much answering each would improve your
+response to the prompt*. Each ranked question carries a **plain-language clarification of what its
+weight means** (how much it would improve the response, the assumption you'd otherwise make and its
+chance of being wrong, and how answerable it is), plus the recommendation (**PRE_ANSWER** ≥ 0.60 /
+**ASSUME_DEFAULT** ≥ 0.40). A detailed numeric table is included below the list. If nothing clears the
+bar, it says so — the prompt is already specified well enough for a good response. See
+`references/design-decisions.md` for the model.
 
 ## How it works (4 stages, looped)
 
