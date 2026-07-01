@@ -323,36 +323,46 @@ whose answers merely tie FLOOR lands near 0 (low EVSI) and a high-impact one lan
 within-question ordering without flattening cross-question magnitude (unit-tested:
 `test_scale_preserved_across_questions`).
 
-**The gate** (`validate_evsi --ab` → `analyze_evsi`): both methods are scored on the SAME question/answer
-set with the realized measurement shared (so only elicitation differs); each method's within-task mean ρ
-is reported against `realized_change` and the clean `realized_regret`. **Decision rule: adopt pairwise as
-the default ONLY if Δρ > 0.02; otherwise keep absolute.** Off by default (`value_judge_mode="absolute"`),
-so the experiment cannot regress the live skill.
+**The gate** (`validate_evsi --ab` → `analyze_evsi.ab_within_task`): both methods are scored on the SAME
+question/answer set with the realized measurement shared (only elicitation differs); each method's
+within-task mean ρ is reported per realized target. **The gate ranks on `realized_regret` (PRIMARY) — the
+realized-EVSI analog (realized_change × realized_stakes), i.e. exactly what `q_value=√(U·EVSI)` predicts —
+with `realized_stakes`/`realized_change` alongside.** Decision rule: adopt pairwise ONLY if it beats
+absolute by Δρ>0.02 on the primary AND the per-prompt paired Δρ is *broad* (majority of prompts, beyond
+~1 SE) — not a 1-2-outlier mean. Off by default (`value_judge_mode="absolute"`), so the experiment cannot
+regress the live skill.
 
-**RESULTS (first host A/B — `validate_evsi --ab --source all_scored`, 6 prompts / 36 questions / 108
-pairs per arm, local `fast` judge held fixed across both arms; cloud `deepseek` isn't reachable from the
-host shell). Within-task mean Spearman ρ (the gate):**
+**RESULTS — POWERED (12-prompt `REALIZED_SUBSET`, 72 questions / 216 pairs per arm, local `fast` judge
+fixed across both arms; 0 errors).** Within-task mean Spearman ρ (q_value vs target):
 
-| target | absolute | pairwise | Δρ | gate (>0.02) |
-|---|---|---|---|---|
-| realized_change | +0.040 | +0.042 | +0.002 | tie → keep absolute |
-| realized_regret (change×stakes) | +0.323 | +0.363 | **+0.040** | pairwise edges ahead |
+| target | absolute | pairwise | paired Δρ (pw−abs) |
+|---|---|---|---|
+| **realized_regret** (PRIMARY, realized EVSI) | **+0.360** | +0.204 | −0.156 (pw wins 3/12) |
+| realized_stakes | **+0.249** | +0.229 | −0.020 (pw wins 6/12) |
+| realized_change | **+0.297** | +0.145 | — |
 
-**Verdict: NOT a clear win → keep `absolute` the default; pairwise stays built, off, and ready.** Reading:
-(a) pairwise is **non-inferior** (ties on change, slightly better on the stakes-weighted regret) — it does
-**not** regress the skill; (b) the realized_change within-task ρ is ≈0 for **both** methods, not just a
-pairwise failure — the local `fast` realized judge **saturates** (39% of pairs at realized=1.0; 0% at
-0.0), which destroys within-task discrimination on the raw-change target regardless of elicitation; (c) on
-the less-saturated regret target both rank far better (~0.33) and pairwise leads by +0.040, consistent
-with the hypothesis but marginal on n=6. The *between*-question validity is intact and healthy on this
-judge too (per-answer projected_delta vs realized_change Pearson 0.47 / Spearman 0.48; per-question
-projected-EVSI vs realized-EVSI ρ **0.80**) — the frontier remains **within-task** ranking.
+**Verdict: KEEP `absolute` — #24 CLOSED as a (mild-negative) null.** With power, pairwise elicitation is
+not merely non-inferior, it is **slightly worse** on every realized target (loses 9/12 prompts on regret).
+The comparative-elicitation hypothesis does not hold for *projected* Δ/stakes; pairwise stays built + off
+as a **documented negative result**.
 
-**Why we don't flip on this:** the opportunity isn't *clear* (Δρ small, n=6, and the primary target's
-judge is saturated). The bottleneck is **judge quality, not method** — more local-judge prompts would
-just tighten a biased estimate. The decisive re-test is a **stronger, de-saturated realized judge**
-(`deepseek` in-container) and/or more prompts; the machinery + `--ab` gate are in place to run it the
-moment that judge is reachable. Until a clear win, `absolute` (validated, ρ≈0.64 between-question) stands.
+**Two n=6 sub-narratives were SMALL-SAMPLE NOISE (corrected here):** (a) "realized_change is
+within-task-dead (ρ≈0.04)" — at n=12 it is **+0.297**, not dead; the n=6 ≈0 was noise, same as everything
+else at n=6. (b) "pairwise edges ahead (+0.07 on stakes)" — at n=12 it is **−0.02**. The adversarial
+agent's core call was right: **the binding limit was power, and the powered re-test confirmed a null.**
+(This is also why the earlier "saturation" *and* "stakes is the unique within-task signal" readings were
+both over-claims — at power, all three realized targets carry within-task signal for the absolute judge.)
+
+**Strong POSITIVE — the frozen formula is validated within-task.** The `p1c` ablation against
+`realized_regret` (n=12) ranks `value √(U·EVSI)` **best (+0.360)**, above **U-only (+0.264), EVSI-only
+(+0.202), stakes-only (+0.157), mean-Δ (+0.153), max-Δ (+0.075)** — the full geometric-mean form beats
+*every* component alone. So within-task ranking is **modest-but-real** (ρ≈0.36, consistent with the
+original ρ≈0.34), and √(U·EVSI) earns its keep. **The formula stays FROZEN — now with within-task support,
+not just between-regime.**
+
+**Do NOT build the comparative realized judge:** pairwise doesn't help even on *projected* elicitation, so
+a realized-pairwise measurement would be pointless. The between-question validity is intact (per-answer
+projected_delta vs realized_change Pearson +0.39; per-question projected-EVSI vs realized-EVSI healthy).
 
 ## Caveats
 

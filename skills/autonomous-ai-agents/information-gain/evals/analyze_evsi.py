@@ -86,14 +86,18 @@ def by_question(rows):
         realized_regret = sum(x["_pn"] * (x.get("realized_regret")
                                           if x.get("realized_regret") is not None
                                           else x["realized_change"]) for x in rs)
+        # realized_stakes is where the WITHIN-TASK signal actually lives (realized_change is
+        # within-task-dead — ρ≈0.04, noise). P′-weighted, method-independent; falls back to 0 if absent.
+        realized_stakes = sum(x["_pn"] * (x.get("realized_stakes") or 0.0) for x in rs)
         max_delta = max(x["projected_delta"] for x in rs)
         mean_delta = sum(x["_pn"] * x["projected_delta"] for x in rs)
+        mean_stakes = sum(x["_pn"] * x.get("stakes", 0.0) for x in rs)  # projected stakes (for ablation)
         out.append({
             "prompt": prompt, "question": q, "n_ans": len(rs),
             "q_u": rs[0]["q_u"], "q_evsi": rs[0]["q_evsi"], "q_value": rs[0]["q_value"],
-            "max_delta": max_delta, "mean_delta": mean_delta,
+            "max_delta": max_delta, "mean_delta": mean_delta, "mean_stakes": mean_stakes,
             "realized_change": realized_change, "realized_evsi": realized_evsi,
-            "realized_regret": realized_regret,
+            "realized_regret": realized_regret, "realized_stakes": realized_stakes,
         })
     return out
 
@@ -144,6 +148,9 @@ FORMULAS = {
     "U-only":          lambda q: q["q_u"],
     "max-Δ":           lambda q: q["max_delta"],
     "mean-Δ (Pwt)":    lambda q: q["mean_delta"],
+    # stakes-only: does the change/EVSI half of √(U·EVSI) earn its keep WITHIN a task, or does projected
+    # stakes alone rank as well? (Phase 3 structural diagnosis — the formula stays FROZEN regardless.)
+    "stakes-only":     lambda q: q.get("mean_stakes", 0.0),
 }
 
 
@@ -173,11 +180,56 @@ def p1c(questions, target_key="realized_change"):
     return results
 
 
+# The #24 gate ranks WITHIN-TASK against these targets, in priority order. PRIMARY is `realized_regret`
+# — the realized EVSI analog (realized_change × realized_stakes), i.e. exactly what q_value=√(U·EVSI) is
+# meant to predict, and the strongest within-task target at n=12. stakes/change are reported alongside.
+# (Historical note: at n=6 realized_change looked within-task-dead (ρ≈0.04) and stakes looked primary;
+# both were SMALL-SAMPLE NOISE — at n=12 all three carry within-task signal for the absolute judge.)
+_GATE_TARGETS = [
+    ("realized_regret", "PRIMARY — realized EVSI (change×stakes)"),
+    ("realized_stakes", "secondary"),
+    ("realized_change", "secondary"),
+]
+
+
+def within_task_rhos(questions, target_key):
+    """{prompt: per-prompt Spearman of the shipped formula (value √(U·EVSI)) vs target_key}. Per-prompt
+    (not just the mean) so the A/B can show whether a 'win' is broad or carried by 1-2 outliers."""
+    by_prompt = defaultdict(list)
+    for q in questions:
+        by_prompt[q["prompt"]].append(q)
+    out = {}
+    for prompt, qs in by_prompt.items():
+        if len(qs) < 2:
+            continue
+        rho = spearman([q["q_value"] for q in qs], [q[target_key] for q in qs])
+        if rho is not None:
+            out[prompt] = rho
+    return out
+
+
+def _mean(xs):
+    xs = [x for x in xs if x is not None]
+    return sum(xs) / len(xs) if xs else None
+
+
+def _paired(deltas):
+    """mean / sd / se / wins / losses for a paired per-prompt Δρ (pairwise − absolute)."""
+    n = len(deltas)
+    if n == 0:
+        return None
+    m = sum(deltas) / n
+    sd = math.sqrt(sum((d - m) ** 2 for d in deltas) / (n - 1)) if n > 1 else 0.0
+    se = sd / math.sqrt(n) if n else 0.0
+    return {"n": n, "mean": m, "sd": sd, "se": se,
+            "wins": sum(1 for d in deltas if d > 1e-6), "losses": sum(1 for d in deltas if d < -1e-6)}
+
+
 def ab_within_task(rows):
-    """The #24 GATE. When rows carry a `method` tag (validate_evsi --ab), compare each elicitation
-    method's WITHIN-TASK ranking (per-prompt mean Spearman of the projected formulas vs the realized
-    target). Pairwise should be adopted as default ONLY if it measurably beats absolute here — the one
-    metric where the skill is weak. Realized targets are method-independent, so it's a clean A/B."""
+    """The #24 GATE. Compares each elicitation method's WITHIN-TASK ranking (per-prompt Spearman of
+    value √(U·EVSI) vs the realized target). Ranked on `realized_stakes` (where within-task signal
+    lives), NOT `realized_change` (within-task-dead). Adopt pairwise ONLY if it beats absolute by
+    Δρ>0.02 on the PRIMARY target AND the per-prompt paired delta is broad, not a 1-2-outlier mean."""
     by_method = defaultdict(list)
     for r in rows:
         by_method[r.get("method") or "absolute"].append(r)
@@ -186,49 +238,33 @@ def ab_within_task(rows):
     print("\n" + "=" * 70)
     print("#24 GATE — WITHIN-TASK RANKING by elicitation method (per-prompt mean ρ)")
     print("=" * 70)
-    summary = {}
-    for method, mrows in sorted(by_method.items()):
-        qs = by_question(mrows)
-        summary[method] = {
-            "n_q": len(qs),
-            "realized_change": p1c_value(qs, "realized_change"),
-            "realized_regret": p1c_value(qs, "realized_regret"),
-        }
-    for target in ("realized_change", "realized_regret"):
-        print(f"\n  target = {target}:")
-        best = max((summary[m][target] for m in summary if summary[m][target] is not None),
-                   default=None)
-        for method in sorted(summary):
-            v = summary[method][target]
+    rhos = {m: {t: within_task_rhos(by_question(mr), t) for t, _ in _GATE_TARGETS}
+            for m, mr in by_method.items()}
+    for target, label in _GATE_TARGETS:
+        means = {m: _mean(list(rhos[m][target].values())) for m in rhos}
+        best = max((v for v in means.values() if v is not None), default=None)
+        print(f"\n  target = {target}  ({label}):")
+        for method in sorted(means):
+            v = means[method]
             star = "  <- best" if v is not None and v == best else ""
-            print(f"    {method:<10} value √(U·EVSI) mean ρ = {v:+.3f}{star}" if v is not None
+            print(f"    {method:<10} mean ρ = {v:+.3f}{star}" if v is not None
                   else f"    {method:<10} mean ρ = n/a")
-    a, p = summary.get("absolute", {}), summary.get("pairwise", {})
-    print("\n  VERDICT:")
-    for target in ("realized_change", "realized_regret"):
-        av, pv = a.get(target), p.get(target)
-        if av is None or pv is None:
-            continue
-        delta = pv - av
-        verb = "BEATS" if delta > 0.02 else "ties" if abs(delta) <= 0.02 else "LOSES to"
-        print(f"    on {target}: pairwise {verb} absolute (Δρ = {delta:+.3f}) "
-              f"→ {'adopt pairwise' if delta > 0.02 else 'keep absolute (no regression)'}")
-
-
-def p1c_value(questions, target_key):
-    """Per-prompt mean Spearman of the shipped formula (value √(U·EVSI)) vs `target_key`. The single
-    number the A/B gate turns on (no console print — used by ab_within_task)."""
-    by_prompt = defaultdict(list)
-    for q in questions:
-        by_prompt[q["prompt"]].append(q)
-    rhos = []
-    for _, qs in by_prompt.items():
-        if len(qs) < 2:
-            continue
-        rho = spearman([q["q_value"] for q in qs], [q[target_key] for q in qs])
-        if rho is not None:
-            rhos.append(rho)
-    return sum(rhos) / len(rhos) if rhos else None
+    if "absolute" in rhos and "pairwise" in rhos:
+        print("\n  VERDICT (keyed on the PRIMARY target realized_regret; per-prompt paired Δρ):")
+        for target in ("realized_regret", "realized_stakes"):
+            a, p = rhos["absolute"][target], rhos["pairwise"][target]
+            common = sorted(set(a) & set(p))
+            st = _paired([p[c] - a[c] for c in common])
+            if not st:
+                continue
+            # "distinguishable from zero" guard: broad (majority wins, no worse than 1 loss for a small
+            # sample) AND mean beyond ~1 SE. Deliberately conservative — a 2-outlier mean must NOT pass.
+            broad = st["wins"] >= st["losses"] * 2 and st["losses"] <= max(1, st["n"] // 4)
+            beyond_noise = st["mean"] > st["se"]
+            decisive = st["mean"] > 0.02 and broad and beyond_noise
+            print(f"    {target}: Δρ mean {st['mean']:+.3f} (sd {st['sd']:.2f}, se {st['se']:.2f}), "
+                  f"pairwise wins {st['wins']}/{st['n']} (losses {st['losses']}) → "
+                  f"{'ADOPT pairwise' if decisive else 'keep absolute (not a clear, broad win)'}")
 
 
 def main(argv):
@@ -247,8 +283,12 @@ def main(argv):
     print(f"\nloaded {len(rows)} answer-rows / {len(questions)} questions / "
           f"{len({q['prompt'] for q in questions})} prompts from {path}\n")
     p1a(rows, questions)
+    # realized_regret (realized EVSI) is the principled WITHIN-TASK target — what q_value predicts.
+    # The ablation shows whether `stakes-only`/`U-only` match `value √(U·EVSI)` within-task (Phase 3
+    # structural diagnosis; formula stays FROZEN regardless).
+    p1c(questions, "realized_regret")
+    p1c(questions, "realized_stakes")
     p1c(questions, "realized_change")
-    p1c(questions, "realized_evsi")
     return 0
 
 

@@ -21,6 +21,7 @@ try:
     import pipeline  # noqa: E402
     import infogain  # noqa: E402
     import adjudicator  # noqa: E402
+    import analyze_evsi  # noqa: E402
     _OK = True
 except SystemExit:
     _OK = False
@@ -120,6 +121,60 @@ class TestAdjudicatorMocked(unittest.TestCase):
         with mock.patch.object(pipeline, "_call_json", return_value=(good, None)):
             v2 = adjudicator.evaluate_case(case, bad_struct, "deepseek")
         self.assertFalse(v2["acceptable"])
+
+
+@unittest.skipUnless(_OK, "skill scripts not importable")
+class TestAnalyzeEvsi(unittest.TestCase):
+    """The #24 gate metric — ranks WITHIN-TASK on realized_stakes (change is within-task-dead)."""
+
+    def _row(self, prompt, q, method, prob, pdelta, stakes, qv, rc, rstk):
+        return {"prompt": prompt, "question": q, "method": method, "prob": prob,
+                "projected_delta": pdelta, "stakes": stakes, "q_u": 0.8, "q_evsi": qv, "q_value": qv,
+                "realized_change": rc, "realized_stakes": rstk,
+                "realized_regret": round(rc * rstk, 3)}
+
+    def test_by_question_aggregates_realized_and_projected_stakes(self):
+        rows = [self._row("P", "q", "absolute", 0.75, 0.8, 0.6, 0.5, 1.0, 0.8),
+                self._row("P", "q", "absolute", 0.25, 0.4, 0.2, 0.5, 0.0, 0.4)]
+        qs = analyze_evsi.by_question(rows)
+        self.assertEqual(len(qs), 1)
+        # P'-weighted: 0.75*0.8 + 0.25*0.4 = 0.7 (realized_stakes); 0.75*0.6+0.25*0.2 = 0.5 (mean_stakes)
+        self.assertAlmostEqual(qs[0]["realized_stakes"], 0.7, places=6)
+        self.assertAlmostEqual(qs[0]["mean_stakes"], 0.5, places=6)
+
+    def test_stakes_only_formula_reads_mean_stakes(self):
+        self.assertIn("stakes-only", analyze_evsi.FORMULAS)
+        self.assertEqual(analyze_evsi.FORMULAS["stakes-only"]({"mean_stakes": 0.42}), 0.42)
+
+    def test_within_task_rhos_are_per_prompt(self):
+        # two prompts, each 2 questions; q_value perfectly orders realized_stakes -> ρ=+1 each
+        rows = []
+        for pr in ("P1", "P2"):
+            rows += [self._row(pr, "qa", "absolute", 1.0, 0.5, 0.9, 0.9, 0.5, 0.9),
+                     self._row(pr, "qb", "absolute", 1.0, 0.5, 0.2, 0.2, 0.5, 0.2)]
+        rhos = analyze_evsi.within_task_rhos(analyze_evsi.by_question(rows), "realized_stakes")
+        self.assertEqual(set(rhos), {"P1", "P2"})
+        for v in rhos.values():
+            self.assertAlmostEqual(v, 1.0, places=6)
+
+    def test_paired_guard_rejects_narrow_win(self):
+        # a mean lifted by one outlier, with losses -> not "broad", not beyond ~1 SE
+        st = analyze_evsi._paired([+0.9, -0.1, -0.1, -0.1])
+        self.assertEqual((st["wins"], st["losses"]), (1, 3))
+        self.assertLess(st["mean"], st["se"])  # beyond_noise is False -> gate keeps absolute
+
+    def test_gate_runs_and_keys_on_regret(self):
+        # smoke: two methods present -> ab_within_task executes without error
+        rows = []
+        for pr in ("P1", "P2", "P3"):
+            for m in ("absolute", "pairwise"):
+                rows += [self._row(pr, "qa", m, 1.0, 0.5, 0.9, 0.9, 0.5, 0.9),
+                         self._row(pr, "qb", m, 1.0, 0.5, 0.2, 0.2, 0.5, 0.2)]
+        analyze_evsi.ab_within_task(rows)  # must not raise
+        # primary target = realized_regret (realized EVSI); change/stakes reported alongside
+        self.assertEqual(analyze_evsi._GATE_TARGETS[0][0], "realized_regret")
+        self.assertEqual({t[0] for t in analyze_evsi._GATE_TARGETS},
+                         {"realized_regret", "realized_stakes", "realized_change"})
 
 
 @unittest.skipUnless(_OK, "skill scripts not importable")

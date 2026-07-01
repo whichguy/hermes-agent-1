@@ -123,12 +123,19 @@ the live skill:
   measured once, shared); `analyze_evsi` prints each method's within-task mean ρ. **Pairwise becomes
   the default ONLY if it measurably beats absolute** (Δρ > 0.02 on realized_change / realized_regret);
   otherwise absolute (validated) is untouched.
-- **First A/B verdict (2026-06, 6 prompts, local judge): KEEP ABSOLUTE.** Pairwise was non-inferior
-  (within-task ρ tied on realized_change, +0.040 on realized_regret) but not a *clear* win — n=6 and the
-  local realized judge saturates (39% at 1.0), so the primary target can't discriminate within-task for
-  either method. Not enough to flip the default; pairwise stays built + off, pending a stronger
-  (de-saturated, e.g. in-container `deepseek`) judge and/or more prompts. See
-  `evsi-validation-findings.md` §"Comparative elicitation (#24)".
+- **A/B verdict (2026-06): #24 CLOSED — KEEP ABSOLUTE (powered null).** Powered 12-prompt A/B on the
+  corrected metric (gate ranks on **`realized_regret`** = realized EVSI, with a per-prompt paired-Δρ
+  broad-win guard): pairwise is **slightly worse** on every realized target (regret abs +0.360 vs pw
+  +0.204; loses 9/12 prompts) — comparative elicitation does **not** help projected Δ/stakes. Pairwise
+  stays built + off as a documented negative result; the de-saturated realized judge is **NOT built**
+  (pointless — pairwise doesn't even help on projected). *The n=6 sub-narratives ("realized_change is
+  within-task-dead", "pairwise +0.07 edge", "saturation", "stakes is the unique signal") were all
+  SMALL-SAMPLE NOISE* — at n=12 realized_change is +0.30 and pairwise is −0.02; the binding limit was
+  power, exactly as the adversarial check predicted. **Strong positive:** the `p1c` ablation vs
+  realized_regret ranks `√(U·EVSI)` **best (+0.360)** above every component (U-only +0.264, EVSI-only
+  +0.202, stakes-only +0.157, max-Δ +0.075) → within-task ranking is modest-but-real (ρ≈0.36) and the
+  frozen formula is validated within-task, not just between-regime. See `evsi-validation-findings.md`
+  §"Comparative elicitation (#24)".
 
 ## Decided / deferred
 

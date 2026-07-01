@@ -31,10 +31,13 @@ loop into the sibling **`investigator`** skill (`../../investigator/evals/valida
   is the path if ever needed; the Δ-half is the validated part. **Comparative elicitation (#24) is now
   BUILT as an off-by-default, A/B-gated experiment** (`value_judge_mode=pairwise`): forced-choice
   comparisons → Bradley-Terry (`scripts/pairwise.py`), anchored FLOOR/CEILING so between-task scale is
-  preserved. First host A/B (6 prompts, local judge): pairwise is **non-inferior** (within-task ρ ties
-  on realized_change, +0.040 on realized_regret) — encouraging but **not a clear win** (n=6; the local
-  realized judge saturates), so **`absolute` stays the default**. Pairwise is ready to re-test against a
-  stronger/de-saturated judge (`deepseek` in-container). The live default is untouched.
+  preserved. **Powered 12-prompt A/B verdict: #24 CLOSED — keep `absolute`.** The gate ranks on
+  `realized_regret` (realized EVSI); with power, pairwise is **slightly worse** on every target (regret
+  abs +0.360 vs pw +0.204, loses 9/12) — comparative elicitation doesn't help projected Δ/stakes.
+  Documented negative result; the realized-pairwise judge is **NOT built** (pointless). The n=6
+  sub-stories (change "dead", pairwise edge, saturation) were small-sample noise. **Positive:** the p1c
+  ablation vs regret ranks `√(U·EVSI)` best (+0.360) above every component → the frozen formula is
+  validated *within*-task too. The live default is untouched.
 - **Wrapper end-to-end is task-dependent** (de-confounded 1-1 at k=1): helps where a clarification
   shapes the work, redundant where a capable agent self-investigates. Distinctive value = user-only
   constraints. The grounded answerer's **cwd** must be the user's project.
