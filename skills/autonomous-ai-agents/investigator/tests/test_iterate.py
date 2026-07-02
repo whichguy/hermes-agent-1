@@ -2,7 +2,7 @@
 """Unit tests for the Investigator loop — deterministic, no network.
 
 Monkeypatches iterate.rank so the loop's stop/cap/tombstone/eligibility logic is tested in
-isolation (no Ollama, no hermes). Resolves the sibling information-gain ranker via
+isolation (no Ollama, no hermes). Resolves the sibling next-best-questions ranker via
 INFOGAIN_SCRIPTS_DIR. Run:
     python3 tests/test_iterate.py
 """
@@ -13,9 +13,9 @@ import unittest
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# Point the investigator at the sibling information-gain ranker (source tree) + make iterate importable.
+# Point the investigator at the sibling next-best-questions ranker (source tree) + make iterate importable.
 os.environ.setdefault("INFOGAIN_SCRIPTS_DIR",
-                      os.path.abspath(os.path.join(_HERE, "..", "..", "information-gain", "scripts")))
+                      os.path.abspath(os.path.join(_HERE, "..", "..", "next-best-questions", "scripts")))
 sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
 
 import iterate  # noqa: E402

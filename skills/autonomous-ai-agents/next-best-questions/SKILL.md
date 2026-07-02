@@ -1,15 +1,16 @@
 ---
-name: information-gain
+name: next-best-questions
 description: >
   Use when a problem or request is underspecified and you need to decide WHAT to clarify before
-  doing the work. Interrogates the prompt into candidate questions, projects plausible answers with
+  doing the work — the NEXT-BEST QUESTIONS to answer, ranked. Interrogates the prompt into
+  candidate questions, projects plausible answers with
   probabilities, estimates each question's value of information (how much the answer would change the
   recommended plan, weighted by likelihood and stakes), discards low-value/redundant ones, and keeps
   generating until a diverse bucket of high-value questions is filled. Reports a ranked list with
   recommendations (pre-answer / assume-default) using role-specialized local Ollama models. Reports
   only — it does not ask the user or answer the questions itself. Triggers: "what should I clarify",
   "what questions matter here", "is this spec complete", "what am I missing before I start".
-version: 1.0.1
+version: 1.1.0
 author: agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -19,33 +20,33 @@ metadata:
     tags: [information-gain, value-of-information, evsi, clarifying-questions, planning, decision-support, ollama]
     related_skills: [ask, advisors]
     config:
-    - key: information-gain.question_gen_model
+    - key: next-best-questions.question_gen_model
       description: Model alias that generates and frames candidate questions (strong)
       default: glm
-      prompt: Which model should generate questions for information-gain?
-    - key: information-gain.answer_model
+      prompt: Which model should generate questions for next-best-questions?
+    - key: next-best-questions.answer_model
       description: Fast model alias that projects plausible answers (runs in parallel)
       default: fast
       prompt: Which fast model should project answers?
-    - key: information-gain.value_judge_model
+    - key: next-best-questions.value_judge_model
       description: Model alias that judges per-answer plan-change and stakes (strong)
       default: deepseek
       prompt: Which model should judge question value?
-    - key: information-gain.min_bucket_size
+    - key: next-best-questions.min_bucket_size
       description: Minimum number of high-value questions the report aims to contain
       default: 3
       prompt: Minimum bucket size for ranked questions?
-    - key: information-gain.discard_threshold
+    - key: next-best-questions.discard_threshold
       description: Value (0-1) below which a question is dropped as not valuable
       default: 0.30
       prompt: Discard threshold for low-value questions?
-    - key: information-gain.max_rounds
+    - key: next-best-questions.max_rounds
       description: Max generation rounds while trying to fill the bucket
       default: 3
       prompt: Max generation rounds?
 ---
 
-# Information-Gain — what to clarify before you start
+# Next-Best-Questions — what to clarify before you start
 
 ## Overview
 

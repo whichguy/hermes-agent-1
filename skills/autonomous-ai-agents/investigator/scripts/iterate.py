@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """iterate.py — the Investigator: build context to convergence, then respond.
 
-A dedicated investigator skill, SEPARATE from the `information-gain` ranker. It *calls* the ranker
+A dedicated investigator skill, SEPARATE from the `next-best-questions` ranker. It *calls* the ranker
 to get the next-best questions, then answers them with a full Hermes agent and folds each distilled
 fact into one continuously-growing context (append-only). The loop:
 
@@ -30,7 +30,7 @@ Usage (inside the container, from the user's project dir):
     python3 scripts/iterate.py --problem "..." --validate top --k 2   # end-to-end test (#21)
 On the host (loop logic only): python3 scripts/iterate.py --problem "..." --dry-run
 
-Depends on the information-gain ranker (resolved via INFOGAIN_SCRIPTS_DIR / HERMES_HOME) and the
+Depends on the next-best-questions ranker (resolved via INFOGAIN_SCRIPTS_DIR / HERMES_HOME) and the
 `ask` skill's model_utils (resolved via ASK_SCRIPTS_DIR / HERMES_HOME).
 """
 
@@ -42,10 +42,14 @@ import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
-# This skill depends on the information-gain ranker — resolve its scripts dir (mirrors the
-# model_utils idiom). INFOGAIN_SCRIPTS_DIR overrides for tests / non-standard installs.
-_INFOGAIN = os.environ.get("INFOGAIN_SCRIPTS_DIR") or os.path.join(
-    _HOME, "skills", "autonomous-ai-agents", "information-gain", "scripts")
+# This skill depends on the next-best-questions ranker (formerly "information-gain" — the
+# INFOGAIN_* env prefix and infogain.py module name are kept). Resolve its scripts dir, trying
+# the new skill name first and falling back to the old one for pre-rename installs.
+# INFOGAIN_SCRIPTS_DIR overrides for tests / non-standard installs.
+_NBQ_CANDIDATES = [os.path.join(_HOME, "skills", "autonomous-ai-agents", name, "scripts")
+                   for name in ("next-best-questions", "information-gain")]
+_INFOGAIN = os.environ.get("INFOGAIN_SCRIPTS_DIR") or next(
+    (p for p in _NBQ_CANDIDATES if os.path.isdir(p)), _NBQ_CANDIDATES[0])
 sys.path.insert(0, _INFOGAIN)
 _ASK = os.environ.get("ASK_SCRIPTS_DIR") or os.path.join(_HOME, "skills", "productivity", "ask", "scripts")
 sys.path.insert(0, _ASK)
@@ -55,7 +59,7 @@ try:
     _HAVE_INFOGAIN = True
 except ImportError as _ie:  # graceful: import-safe without it; rank() raises instead
     _HAVE_INFOGAIN = False
-    _INFOGAIN_ERR = ("investigator requires the information-gain skill (infogain.py) to rank "
+    _INFOGAIN_ERR = ("investigator requires the next-best-questions skill (infogain.py) to rank "
                      f"questions. Looked in {_INFOGAIN!r}. Set INFOGAIN_SCRIPTS_DIR or HERMES_HOME.")
 
 try:

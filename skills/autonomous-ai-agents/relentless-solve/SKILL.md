@@ -2,7 +2,7 @@
 name: relentless-solve
 description: >
   Use when a prompt should be driven to a solution without letting go: it clarifies the prompt
-  first (information-gain ranks the next-best questions by EVSI; the investigator researches
+  first (next-best-questions ranks the next-best questions by EVSI; the investigator researches
   them), executes with the resilient-planner (AND/OR backtracking to a terminal state), and when
   execution fails it harvests the failure conditions — dead branches, exhaustion, budget guards —
   as evidence folded into the next clarify round, looping until success or the search is provably
@@ -17,7 +17,7 @@ metadata:
   hermes:
     category: autonomous-ai-agents
     tags: [orchestrator, clarify-execute-loop, value-of-information, backtracking, durable, autonomous]
-    related_skills: [investigator, information-gain, resilient-planner, resumable-script]
+    related_skills: [investigator, next-best-questions, resilient-planner, resumable-script]
 ---
 
 # Relentless Solve — clarify → execute → harvest failures → repeat
@@ -26,7 +26,7 @@ metadata:
 
 One deterministic loop over three existing layers. Each cycle:
 
-1. **CLARIFY** — `investigator/scripts/iterate.py` (in-process): information-gain ranks the
+1. **CLARIFY** — `investigator/scripts/iterate.py` (in-process): next-best-questions ranks the
    next-best questions given *everything known so far*; the top-K are researched by a full
    Hermes agent; answers and gaps come back as tombstones.
 2. **EXECUTE** — `resilient-planner` via `drive.py` (subprocess): the prompt, re-rendered with
@@ -64,7 +64,7 @@ tests-only (`tests/`, fakes; iterate.py needs the container's model_utils live).
 
 | Dependency | Default | Override |
 |---|---|---|
-| information-gain ranker | sibling `../information-gain/scripts` (pinned before importing iterate) | `INFOGAIN_SCRIPTS_DIR` |
+| next-best-questions ranker | sibling `../next-best-questions/scripts` (pinned before importing iterate) | `INFOGAIN_SCRIPTS_DIR` |
 | ask model dispatch | `${HERMES_HOME}/skills/productivity/ask/scripts` | `ASK_SCRIPTS_DIR` |
 | resilient-planner driver | `${HERMES_HOME}/skills/resilient-planner/scripts/drive.py` | `RESILIENT_DRIVE` |
 | resumable-script engine | `${HERMES_HOME}/skills/resumable-script/scripts` | `RESUMABLE_ENGINE_DIR` |

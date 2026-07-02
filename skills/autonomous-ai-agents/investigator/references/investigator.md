@@ -2,7 +2,7 @@
 
 ## Layering (primitive vs orchestrator)
 
-- **`information-gain` (the ranker)** is a pure, **report-only** primitive: given `(prompt + evidence)`
+- **`next-best-questions` (the ranker)** is a pure, **report-only** primitive: given `(prompt + evidence)`
   it returns the next-best questions ranked by value of information. It never acts.
 - **`investigator` (this skill)** is the **orchestrator**: it calls the ranker, answers the top
   questions with a full Hermes agent, folds facts back into one growing context, re-ranks, and

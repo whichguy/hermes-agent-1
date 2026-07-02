@@ -25,9 +25,12 @@ import time
 _HERE = os.path.dirname(os.path.abspath(__file__))            # investigator/evals
 _HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))     # investigator/scripts -> iterate
-# pipeline + testbank live in the information-gain ranker skill (this skill depends on it):
-_INFOGAIN = os.environ.get("INFOGAIN_SCRIPTS_DIR") or os.path.join(
-    _HOME, "skills", "autonomous-ai-agents", "information-gain", "scripts")
+# pipeline + testbank live in the next-best-questions ranker skill (this skill depends on it);
+# try the new skill name first, fall back to the pre-rename name:
+_NBQ_CANDIDATES = [os.path.join(_HOME, "skills", "autonomous-ai-agents", name, "scripts")
+                   for name in ("next-best-questions", "information-gain")]
+_INFOGAIN = os.environ.get("INFOGAIN_SCRIPTS_DIR") or next(
+    (p for p in _NBQ_CANDIDATES if os.path.isdir(p)), _NBQ_CANDIDATES[0])
 sys.path.insert(0, _INFOGAIN)                                 # pipeline
 sys.path.insert(0, os.path.join(_INFOGAIN, "..", "evals"))   # testbank
 

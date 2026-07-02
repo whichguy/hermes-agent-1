@@ -2,14 +2,14 @@
 name: investigator
 description: >
   Use when a task is underspecified and you want an agent to autonomously RESOLVE the unknowns before
-  answering — not just list them. Calls the information-gain ranker for the next-best questions, then
+  answering — not just list them. Calls the next-best-questions ranker for the next-best questions, then
   researches the top ones with a full Hermes agent (full agency by default — all tools), folds each
   distilled fact into one continuously-growing context, re-ranks, and repeats until it converges, then
   produces the final response. Records answered facts and known gaps as tombstones. Capability is full
   (act) by default; `--capability experiment|read` down-scopes for caution. Best where a clarification
   SHAPES the work (build/spec) or the answer is researchable. Triggers: "figure out what I'm missing
   and just do it", "investigate and answer", "resolve the unknowns then respond".
-version: 1.0.1
+version: 1.1.0
 author: agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -17,7 +17,7 @@ metadata:
   hermes:
     category: autonomous-ai-agents
     tags: [investigator, clarifying-questions, value-of-information, grounded-research, autonomous, ollama]
-    related_skills: [information-gain, ask]
+    related_skills: [next-best-questions, ask]
     config:
     - key: investigator.k
       description: Top-K questions to research per round (by rank)
@@ -37,7 +37,7 @@ metadata:
 
 ## Overview
 
-This is the **orchestrator** layer that sits on top of the report-only `information-gain` ranker. The
+This is the **orchestrator** layer that sits on top of the report-only `next-best-questions` ranker. The
 ranker decides *what is worth clarifying*; the Investigator goes and **answers it**, then responds.
 
 The loop is **one continuously-growing, append-only context**:
@@ -46,7 +46,7 @@ The loop is **one continuously-growing, append-only context**:
 tombstones = []                              # answered facts + known gaps
 for round in range(max_rounds):
     evidence = facts(tombstones)             # the shared growing context
-    ranked   = information-gain.run(problem, evidence)   # next-best questions, given everything known
+    ranked   = next-best-questions.run(problem, evidence)   # next-best questions, given everything known
     top      = [q for q in ranked if value >= floor and not answered][:K]    # top-K BY RANK
     if not top: stop "converged"
     for q in top: tombstones += grounded_answer(q)       # full Hermes agent, distilled fact back
@@ -65,7 +65,7 @@ response should be grounded in what it finds.
 
 **Don't use it** for well-specified tasks (the ranker will converge immediately — wasted rounds),
 for questions only the user can answer (it surfaces those as clarifying questions rather than
-guessing — but if *most* unknowns are user-only, just run `information-gain` and ask), or when a
+guessing — but if *most* unknowns are user-only, just run `next-best-questions` and ask), or when a
 capable agent would naturally self-investigate anyway (the A/B showed the loop is redundant there —
 its distinctive value is systematic coverage + user-only constraint surfacing).
 
@@ -117,11 +117,11 @@ Capability maps to the answerer's toolsets + a prompt directive (`CAPABILITIES` 
 
 End-to-end value is **task-dependent** (de-confounded A/B: helps where a clarification shapes the work,
 redundant where a capable agent self-investigates). The ranking it relies on is validated in the
-agentic domain (realized-change ρ≈0.66). See `information-gain/references/evsi-validation-findings.md`.
+agentic domain (realized-change ρ≈0.66). See `next-best-questions/references/evsi-validation-findings.md`.
 
 ## Dependency
 
-Depends on the **information-gain** ranker (imported in-process, resolved via `HERMES_HOME` or
+Depends on the **next-best-questions** ranker (imported in-process, resolved via `HERMES_HOME` or
 `INFOGAIN_SCRIPTS_DIR`) and the **ask** skill's `model_utils` (the grounded answerer/responder run a
 full Hermes agent via `dispatch_single`; resolved via `HERMES_HOME` or `ASK_SCRIPTS_DIR`).
 

@@ -64,14 +64,14 @@ _INVESTIGATOR_MOD = None
 
 
 def _investigator():
-    """Lazy: import the investigator (which pulls information-gain) only when the live
+    """Lazy: import the investigator (which pulls next-best-questions) only when the live
     clarify phase actually runs — module import stays stdlib+harvest for standalone tests.
     The investigator's own default resolution assumes deployed-skill layout; in the repo
     tree the ranker is our sibling — pin INFOGAIN_SCRIPTS_DIR before importing iterate."""
     global _INVESTIGATOR_MOD
     if _INVESTIGATOR_MOD is None:
         os.environ.setdefault("INFOGAIN_SCRIPTS_DIR",
-                              os.path.join(_AA, "information-gain", "scripts"))
+                              os.path.join(_AA, "next-best-questions", "scripts"))
         inv_dir = os.path.join(_AA, "investigator", "scripts")
         if inv_dir not in sys.path:
             sys.path.insert(0, inv_dir)

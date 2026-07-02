@@ -1,6 +1,6 @@
 # Evals
 
-Evaluation + validation harnesses for the **information-gain ranker**. Findings live in
+Evaluation + validation harnesses for the **next-best-questions ranker** (formerly information-gain). Findings live in
 `../references/{benchmark-findings,evsi-validation-findings}.md`. These run on the host against
 `localhost:11434` (immune to container restarts). The end-to-end **wrapper** A/B harness moved with the
 loop into the sibling **`investigator`** skill (`../../investigator/evals/validate_wrapper.py`).
