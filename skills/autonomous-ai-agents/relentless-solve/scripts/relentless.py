@@ -40,14 +40,9 @@ import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _AA = os.path.abspath(os.path.join(_HERE, "..", ".."))  # skills/autonomous-ai-agents
-# The investigator's own default resolution assumes deployed-skill layout; in the repo tree
-# (host or /opt/data/hermes-agent) the ranker is our sibling — pin it before importing iterate.
-os.environ.setdefault("INFOGAIN_SCRIPTS_DIR", os.path.join(_AA, "information-gain", "scripts"))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.join(_AA, "investigator", "scripts"))
 
 import harvest  # noqa: E402
-import iterate as investigator  # noqa: E402
 
 _HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
 PLANS_DIR = os.path.join(_HOME, "plans")
@@ -65,15 +60,34 @@ DEFAULTS = {
 
 # ── injectable phase helpers (tests monkeypatch these, like drive.py's DI wiring) ─────────────
 
-def inv_cfg(inp):
-    cfg = {"k": inp["k"], "max_rounds": inp["inv_rounds"], "floor": inp["floor"],
-           "answer_cwd": inp["answer_cwd"], "responder_cwd": inp["answer_cwd"]}
-    return investigator.apply_capability(cfg, inp["capability"])
+_INVESTIGATOR_MOD = None
 
 
-def run_clarify(problem, seeds, cfg):
+def _investigator():
+    """Lazy: import the investigator (which pulls information-gain) only when the live
+    clarify phase actually runs — module import stays stdlib+harvest for standalone tests.
+    The investigator's own default resolution assumes deployed-skill layout; in the repo
+    tree the ranker is our sibling — pin INFOGAIN_SCRIPTS_DIR before importing iterate."""
+    global _INVESTIGATOR_MOD
+    if _INVESTIGATOR_MOD is None:
+        os.environ.setdefault("INFOGAIN_SCRIPTS_DIR",
+                              os.path.join(_AA, "information-gain", "scripts"))
+        inv_dir = os.path.join(_AA, "investigator", "scripts")
+        if inv_dir not in sys.path:
+            sys.path.insert(0, inv_dir)
+        import iterate  # noqa: E402
+        _INVESTIGATOR_MOD = iterate
+    return _INVESTIGATOR_MOD
+
+
+def run_clarify(problem, seeds, inp):
     """Investigator round trimmed to what the loop consumes (the engine journals results)."""
-    out = investigator.iterate(problem, cfg, seed_evidence=seeds)
+    inv = _investigator()
+    cfg = inv.apply_capability(
+        {"k": inp["k"], "max_rounds": inp["inv_rounds"], "floor": inp["floor"],
+         "answer_cwd": inp["answer_cwd"], "responder_cwd": inp["answer_cwd"]},
+        inp["capability"])
+    out = inv.iterate(problem, cfg, seed_evidence=seeds)
     return {"tombstones": out["tombstones"], "stop_reason": out["stop_reason"],
             "n_answered": out["n_answered"], "n_gaps": out["n_gaps"]}
 
@@ -215,8 +229,7 @@ def relentless_flow(ctx, inp):
 
         # A — CLARIFY: next-best questions over everything known so far
         inv = ctx.step(f"{c}/clarify",
-                       lambda: run_clarify(inp["prompt"], [r["text"] for r in ledger],
-                                           inv_cfg(inp)))
+                       lambda: run_clarify(inp["prompt"], [r["text"] for r in ledger], inp))
         fresh_clar = fold_clarify(inv["tombstones"], cycle, ledger, seen)
 
         # B — EXECUTE: fresh planner slug against the re-rendered prompt

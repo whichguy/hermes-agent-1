@@ -38,11 +38,16 @@ if _ASK not in sys.path:
     sys.path.insert(0, _ASK)
 try:
     from model_utils import build_prompt, resolve_alias, NON_ENGLISH_MODELS  # noqa: E402
-except ImportError as e:  # pragma: no cover - environment guard
-    raise SystemExit(
-        "information-gain requires the `ask` skill (model_utils.py). Looked in "
-        f"{_ASK!r}. Install the ask skill or set ASK_SCRIPTS_DIR / HERMES_HOME."
-    ) from e
+    _HAVE_ASK = True
+except ImportError as _e:  # graceful: import-safe without ask; raise at dispatch time instead
+    _HAVE_ASK = False
+    _ASK_ERR = (
+        "information-gain requires the `ask` skill (model_utils.py) for model calls. "
+        f"Looked in {_ASK!r}. Install the ask skill or set ASK_SCRIPTS_DIR / HERMES_HOME."
+    )
+    build_prompt = None
+    resolve_alias = lambda m: m  # noqa: E731 — identity fallback keeps re-exports importable
+    NON_ENGLISH_MODELS = frozenset()
 
 # Sibling pure-math modules: voi (dedup/scoring), pairwise (comparative-elicitation aggregation).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -89,6 +94,10 @@ def raw_chat(model, user_content, timeout=120, temperature=0.0, num_predict=900)
     `build_prompt` handles the /no_think prefix (Qwen) and English directive
     (GLM and other NON_ENGLISH_MODELS) for us.
     """
+    if not _HAVE_ASK:
+        # raw_chat's contract is error-as-data, never raise (stages treat failures as results)
+        return {"content": "", "elapsed": 0.0, "error": _ASK_ERR,
+                "input_tokens": 0, "output_tokens": 0}
     start = time.time()
     try:
         english_only = model in NON_ENGLISH_MODELS

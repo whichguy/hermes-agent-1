@@ -52,9 +52,11 @@ sys.path.insert(0, _ASK)
 
 try:
     import infogain  # noqa: E402  — the next-best-questions ranker
-except ImportError as e:
-    raise SystemExit("investigator requires the information-gain skill (infogain.py). Looked in "
-                     f"{_INFOGAIN!r}. Set INFOGAIN_SCRIPTS_DIR or HERMES_HOME.") from e
+    _HAVE_INFOGAIN = True
+except ImportError as _ie:  # graceful: import-safe without it; rank() raises instead
+    _HAVE_INFOGAIN = False
+    _INFOGAIN_ERR = ("investigator requires the information-gain skill (infogain.py) to rank "
+                     f"questions. Looked in {_INFOGAIN!r}. Set INFOGAIN_SCRIPTS_DIR or HERMES_HOME.")
 
 try:
     from model_utils import dispatch_single, resolve_alias  # noqa: E402
@@ -100,6 +102,8 @@ def apply_capability(cfg, level):
 
 
 def _rank_cfg():
+    if not _HAVE_INFOGAIN:  # tests monkeypatch rank(); the cfg is then unused
+        return {}
     cfg = dict(infogain.DEFAULTS)
     cfg.update(infogain.MODES.get("focus", {}))
     cfg["mode"], cfg["max_rounds"] = "focus", 1
@@ -108,6 +112,8 @@ def _rank_cfg():
 
 def rank(problem, evidence, rank_cfg):
     """Ranked candidate questions (all_scored, value-desc) given the growing context."""
+    if not _HAVE_INFOGAIN:
+        raise RuntimeError(_INFOGAIN_ERR)
     res = infogain.run(problem, rank_cfg, evidence=evidence)
     ranked = sorted(res.get("all_scored", []), key=lambda r: r.get("value", 0.0), reverse=True)
     return ranked
@@ -289,6 +295,9 @@ def main(argv=None):
     responder = _mock_responder if args.dry_run else None
     if not args.dry_run and not _HAVE_ASK:
         print(f"live runs need the `ask` skill (model_utils): {_ASK_ERR}", file=sys.stderr)
+        return 2
+    if not args.dry_run and not _HAVE_INFOGAIN:
+        print(_INFOGAIN_ERR, file=sys.stderr)
         return 2
     prog = lambda m: print(f"… {m}", file=sys.stderr, flush=True)
 
