@@ -1,0 +1,2 @@
+{"v":1,"seq":0,"ts":"2026-01-01T00:00:00Z","type":"run_started","run_id":"R","flow_id":"demo","flow_version":1,"flow_hash":"sha256:demo","engine":"py","engine_version":"1.0.0","input":null}
+{"v":1,"seq":1,"ts":"2026-01-01T00:00:00Z","type":"step_started","key":"charge","attempt":1,"idempotency_key":"R:charge"}

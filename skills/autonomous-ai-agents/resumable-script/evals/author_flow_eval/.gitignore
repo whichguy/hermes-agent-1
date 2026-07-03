@@ -1,0 +1,5 @@
+# transient eval outputs
+artifacts/
+fixtures/
+.venv/
+__pycache__/

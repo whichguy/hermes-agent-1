@@ -1,0 +1,27 @@
+{
+  "map": [
+    "src/auth.py",
+    "src/config.py",
+    "src/server.py",
+    "tests/test_auth.py"
+  ],
+  "reproduce": {
+    "code": 1,
+    "out": "FAIL tests/test_auth.py::test_verify - AssertionError in verify_token (src/auth.py:42)"
+  },
+  "reproduce_depdown": "ModuleNotFoundError: No module named 'jwtlib'",
+  "verify": {
+    "code": 0,
+    "out": "OK - 1 passed"
+  },
+  "grep": {
+    "verify_token": [
+      {"path": "src/auth.py", "line": 42, "text": "return token == expected"},
+      {"path": "tests/test_auth.py", "line": 10, "text": "assert verify_token(tok, exp)"}
+    ]
+  },
+  "read": {
+    "src/auth.py": "def verify_token(token, expected):\n    return token == expected  # <- non-constant-time compare; suspicious"
+  },
+  "edit": {"find": "== expected", "replace": "== expected  # reviewed"}
+}

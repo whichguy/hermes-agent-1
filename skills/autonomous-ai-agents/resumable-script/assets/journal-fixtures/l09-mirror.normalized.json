@@ -1,0 +1,106 @@
+[
+ {
+  "flow_id": "l09",
+  "flow_version": 1,
+  "input": null,
+  "type": "run_started",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "a",
+  "type": "step_started",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "a",
+  "result": 1,
+  "type": "step_completed",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "items",
+  "type": "step_started",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "items",
+  "result": [
+   "p",
+   "q"
+  ],
+  "type": "step_completed",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "u:p",
+  "type": "step_started",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "u:p",
+  "result": "P",
+  "type": "step_completed",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "u:q",
+  "type": "step_started",
+  "v": 1
+ },
+ {
+  "attempt": 1,
+  "key": "u:q",
+  "result": "Q",
+  "type": "step_completed",
+  "v": 1
+ },
+ {
+  "key": "confirm",
+  "question": {
+   "prompt": "ok?",
+   "type": "boolean"
+  },
+  "schema": null,
+  "type": "ask_requested",
+  "v": 1
+ },
+ {
+  "pending_key": "confirm",
+  "type": "flow_suspended",
+  "v": 1
+ },
+ {
+  "answer": true,
+  "interpreted_by": "human",
+  "key": "confirm",
+  "raw": "true",
+  "type": "ask_answered",
+  "v": 1
+ },
+ {
+  "flow_id": "l09",
+  "flow_version": 1,
+  "input": null,
+  "type": "run_started",
+  "v": 1
+ },
+ {
+  "result": {
+   "a": 1,
+   "ok": true,
+   "out": [
+    "P",
+    "Q"
+   ]
+  },
+  "type": "flow_completed",
+  "v": 1
+ }
+]

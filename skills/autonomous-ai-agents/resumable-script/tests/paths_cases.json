@@ -1,0 +1,887 @@
+[
+ {
+  "name": "get-dot",
+  "op": "get",
+  "path": "$.a.b",
+  "state": {
+   "a": {
+    "b": 5
+   }
+  },
+  "expect": 5
+ },
+ {
+  "name": "get-index",
+  "op": "get",
+  "path": "$.items[1].id",
+  "state": {
+   "items": [
+    {
+     "id": "x"
+    },
+    {
+     "id": "y"
+    }
+   ]
+  },
+  "expect": "y"
+ },
+ {
+  "name": "get-neg-index",
+  "op": "get",
+  "path": "$.items[-1]",
+  "state": {
+   "items": [
+    10,
+    20,
+    30
+   ]
+  },
+  "expect": 30
+ },
+ {
+  "name": "get-neg-index2",
+  "op": "get",
+  "path": "$.xs[-2]",
+  "state": {
+   "xs": [
+    1,
+    2,
+    3
+   ]
+  },
+  "expect": 2
+ },
+ {
+  "name": "get-missing-key",
+  "op": "get",
+  "path": "$.b",
+  "state": {
+   "a": 1
+  },
+  "expect": null
+ },
+ {
+  "name": "get-missing-deep",
+  "op": "get",
+  "path": "$.a.b.c",
+  "state": {
+   "a": {}
+  },
+  "expect": null
+ },
+ {
+  "name": "get-index-oob",
+  "op": "get",
+  "path": "$.xs[3]",
+  "state": {
+   "xs": [
+    1
+   ]
+  },
+  "expect": null
+ },
+ {
+  "name": "get-index-neg-oob",
+  "op": "get",
+  "path": "$.xs[-5]",
+  "state": {
+   "xs": [
+    1,
+    2
+   ]
+  },
+  "expect": null
+ },
+ {
+  "name": "get-into-noncontainer",
+  "op": "get",
+  "path": "$.a.b",
+  "state": {
+   "a": 5
+  },
+  "expect": null
+ },
+ {
+  "name": "get-index-on-dict",
+  "op": "get",
+  "path": "$.a[0]",
+  "state": {
+   "a": {
+    "x": 1
+   }
+  },
+  "expect": null
+ },
+ {
+  "name": "get-whole-state",
+  "op": "get",
+  "path": "$",
+  "state": {
+   "a": 1
+  },
+  "expect": {
+   "a": 1
+  }
+ },
+ {
+  "name": "render-single",
+  "op": "render",
+  "template": "Hi ${$.name}",
+  "state": {
+   "name": "Al"
+  },
+  "expect": "Hi Al"
+ },
+ {
+  "name": "render-multi",
+  "op": "render",
+  "template": "${$.a}-${$.b}",
+  "state": {
+   "a": 1,
+   "b": 2
+  },
+  "expect": "1-2"
+ },
+ {
+  "name": "render-in",
+  "op": "render",
+  "template": "in=${in}",
+  "flowing": "X",
+  "expect": "in=X"
+ },
+ {
+  "name": "render-in-dict",
+  "op": "render",
+  "template": "in=${in}",
+  "flowing": {
+   "y": 2,
+   "x": 1
+  },
+  "expect": "in={\"x\":1,\"y\":2}"
+ },
+ {
+  "name": "render-dict-sorted",
+  "op": "render",
+  "template": "d=${$.d}",
+  "state": {
+   "d": {
+    "y": 2,
+    "x": 1
+   }
+  },
+  "expect": "d={\"x\":1,\"y\":2}"
+ },
+ {
+  "name": "render-list",
+  "op": "render",
+  "template": "l=${$.l}",
+  "state": {
+   "l": [
+    1,
+    2
+   ]
+  },
+  "expect": "l=[1,2]"
+ },
+ {
+  "name": "render-bool",
+  "op": "render",
+  "template": "b=${$.b}",
+  "state": {
+   "b": true
+  },
+  "expect": "b=true"
+ },
+ {
+  "name": "render-number-float",
+  "op": "render",
+  "template": "n=${$.n}",
+  "state": {
+   "n": 3
+  },
+  "expect": "n=3"
+ },
+ {
+  "name": "render-unicode",
+  "op": "render",
+  "template": "u=${$.u}",
+  "state": {
+   "u": "h\u00e9llo \u4e16\u754c \ud83d\ude80"
+  },
+  "expect": "u=h\u00e9llo \u4e16\u754c \ud83d\ude80"
+ },
+ {
+  "name": "render-missing-empty",
+  "op": "render",
+  "template": "x=[${$.missing}].",
+  "state": {},
+  "expect": "x=[]."
+ },
+ {
+  "name": "render-nested-missing",
+  "op": "render",
+  "template": "x=[${$.a.b.c}]",
+  "state": {
+   "a": {}
+  },
+  "expect": "x=[]"
+ },
+ {
+  "name": "render-escape",
+  "op": "render",
+  "template": "cost $${x} ok",
+  "state": {},
+  "expect": "cost ${x} ok"
+ },
+ {
+  "name": "render-literal-braces",
+  "op": "render",
+  "template": "json {\"k\":1} end",
+  "state": {},
+  "expect": "json {\"k\":1} end"
+ },
+ {
+  "name": "render-lone-dollar",
+  "op": "render",
+  "template": "price $5 flat",
+  "state": {},
+  "expect": "price $5 flat"
+ },
+ {
+  "name": "render-unclosed-hole",
+  "op": "render",
+  "template": "a ${$.x b",
+  "state": {
+   "x": 1
+  },
+  "expect": "a ${$.x b"
+ },
+ {
+  "name": "render-at-with-ret",
+  "op": "render",
+  "template": "v=${@.v}",
+  "ret": {
+   "v": 9
+  },
+  "expect": "v=9"
+ },
+ {
+  "name": "render-index",
+  "op": "render",
+  "template": "n=${$.xs[0].n}",
+  "state": {
+   "xs": [
+    {
+     "n": 7
+    }
+   ]
+  },
+  "expect": "n=7"
+ },
+ {
+  "name": "value-lone-number",
+  "op": "value",
+  "value": "${$.count}",
+  "state": {
+   "count": 5
+  },
+  "expect": 5
+ },
+ {
+  "name": "value-lone-dict",
+  "op": "value",
+  "value": "${$.obj}",
+  "state": {
+   "obj": {
+    "a": 1
+   }
+  },
+  "expect": {
+   "a": 1
+  }
+ },
+ {
+  "name": "value-lone-bool",
+  "op": "value",
+  "value": "${$.ok}",
+  "state": {
+   "ok": false
+  },
+  "expect": false
+ },
+ {
+  "name": "value-lone-missing",
+  "op": "value",
+  "value": "${$.nope}",
+  "state": {},
+  "expect": null
+ },
+ {
+  "name": "value-literal-string",
+  "op": "value",
+  "value": "approved",
+  "state": {},
+  "expect": "approved"
+ },
+ {
+  "name": "value-literal-dollar",
+  "op": "value",
+  "value": "$5.00",
+  "state": {},
+  "expect": "$5.00"
+ },
+ {
+  "name": "value-literal-at",
+  "op": "value",
+  "value": "@channel",
+  "state": {},
+  "expect": "@channel"
+ },
+ {
+  "name": "value-embedded-stringifies",
+  "op": "value",
+  "value": "id=${$.n}",
+  "state": {
+   "n": 7
+  },
+  "expect": "id=7"
+ },
+ {
+  "name": "value-nonstring-number",
+  "op": "value",
+  "value": 42,
+  "expect": 42
+ },
+ {
+  "name": "value-nonstring-bool",
+  "op": "value",
+  "value": true,
+  "expect": true
+ },
+ {
+  "name": "value-nonstring-list",
+  "op": "value",
+  "value": [
+   1,
+   2
+  ],
+  "expect": [
+   1,
+   2
+  ]
+ },
+ {
+  "name": "value-escaped-lone",
+  "op": "value",
+  "value": "$${x}",
+  "state": {},
+  "expect": "${x}"
+ },
+ {
+  "name": "value-lone-at",
+  "op": "value",
+  "value": "${@.tier}",
+  "ret": {
+   "tier": "gold"
+  },
+  "expect": "gold"
+ },
+ {
+  "name": "apply-set-literal",
+  "op": "apply",
+  "state": {},
+  "ops": {
+   "set": {
+    "$.d": "ok"
+   }
+  },
+  "expect": {
+   "d": "ok"
+  }
+ },
+ {
+  "name": "apply-set-from-at",
+  "op": "apply",
+  "state": {},
+  "ret": {
+   "profile": {
+    "tier": "gold"
+   }
+  },
+  "ops": {
+   "set": {
+    "$.tier": "${@.profile.tier}"
+   }
+  },
+  "expect": {
+   "tier": "gold"
+  }
+ },
+ {
+  "name": "apply-set-type-preserved",
+  "op": "apply",
+  "state": {},
+  "ret": {
+   "n": 5
+  },
+  "ops": {
+   "set": {
+    "$.count": "${@.n}"
+   }
+  },
+  "expect": {
+   "count": 5
+  }
+ },
+ {
+  "name": "apply-set-from-global",
+  "op": "apply",
+  "state": {
+   "src": {
+    "v": "z"
+   }
+  },
+  "ops": {
+   "set": {
+    "$.dst": "${$.src.v}"
+   }
+  },
+  "expect": {
+   "src": {
+    "v": "z"
+   },
+   "dst": "z"
+  }
+ },
+ {
+  "name": "apply-nested-creation",
+  "op": "apply",
+  "state": {},
+  "ops": {
+   "set": {
+    "$.a.b.c": "deep"
+   }
+  },
+  "expect": {
+   "a": {
+    "b": {
+     "c": "deep"
+    }
+   }
+  }
+ },
+ {
+  "name": "apply-append-missing",
+  "op": "apply",
+  "state": {},
+  "ret": {
+   "s": "x"
+  },
+  "ops": {
+   "append": {
+    "$.log": "${@.s}"
+   }
+  },
+  "expect": {
+   "log": [
+    "x"
+   ]
+  }
+ },
+ {
+  "name": "apply-append-existing",
+  "op": "apply",
+  "state": {
+   "log": [
+    "a"
+   ]
+  },
+  "ops": {
+   "append": {
+    "$.log": "b"
+   }
+  },
+  "expect": {
+   "log": [
+    "a",
+    "b"
+   ]
+  }
+ },
+ {
+  "name": "apply-delete",
+  "op": "apply",
+  "state": {
+   "a": 1,
+   "b": 2
+  },
+  "ops": {
+   "delete": [
+    "$.b"
+   ]
+  },
+  "expect": {
+   "a": 1
+  }
+ },
+ {
+  "name": "apply-delete-nested",
+  "op": "apply",
+  "state": {
+   "a": {
+    "x": 1,
+    "y": 2
+   }
+  },
+  "ops": {
+   "delete": [
+    "$.a.y"
+   ]
+  },
+  "expect": {
+   "a": {
+    "x": 1
+   }
+  }
+ },
+ {
+  "name": "apply-delete-missing-noop",
+  "op": "apply",
+  "state": {
+   "a": 1
+  },
+  "ops": {
+   "delete": [
+    "$.z"
+   ]
+  },
+  "expect": {
+   "a": 1
+  }
+ },
+ {
+  "name": "apply-delete-through-list",
+  "op": "apply",
+  "state": {
+   "items": [
+    {
+     "flag": true,
+     "id": 1
+    }
+   ]
+  },
+  "ops": {
+   "delete": [
+    "$.items[0].flag"
+   ]
+  },
+  "expect": {
+   "items": [
+    {
+     "id": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "apply-delete-through-list-neg",
+  "op": "apply",
+  "state": {
+   "items": [
+    {
+     "k": 1
+    },
+    {
+     "k": 2,
+     "d": 9
+    }
+   ]
+  },
+  "ops": {
+   "delete": [
+    "$.items[-1].d"
+   ]
+  },
+  "expect": {
+   "items": [
+    {
+     "k": 1
+    },
+    {
+     "k": 2
+    }
+   ]
+  }
+ },
+ {
+  "name": "apply-delete-through-list-oob-noop",
+  "op": "apply",
+  "state": {
+   "items": [
+    {
+     "k": 1
+    }
+   ]
+  },
+  "ops": {
+   "delete": [
+    "$.items[3].k"
+   ]
+  },
+  "expect": {
+   "items": [
+    {
+     "k": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "apply-delete-final-list-index-noop",
+  "op": "apply",
+  "state": {
+   "xs": [
+    1,
+    2,
+    3
+   ]
+  },
+  "ops": {
+   "delete": [
+    "$.xs[1]"
+   ]
+  },
+  "expect": {
+   "xs": [
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ {
+  "name": "apply-delete-int-into-dict-noop",
+  "op": "apply",
+  "state": {
+   "a": {
+    "x": 1
+   }
+  },
+  "ops": {
+   "delete": [
+    "$.a[0]"
+   ]
+  },
+  "expect": {
+   "a": {
+    "x": 1
+   }
+  }
+ },
+ {
+  "name": "apply-set-into-list-index",
+  "op": "apply",
+  "state": {
+   "xs": [
+    1,
+    2,
+    3
+   ]
+  },
+  "ret": {
+   "v": 9
+  },
+  "ops": {
+   "set": {
+    "$.xs[1]": "${@.v}"
+   }
+  },
+  "expect": {
+   "xs": [
+    1,
+    9,
+    3
+   ]
+  }
+ },
+ {
+  "name": "apply-set-in",
+  "op": "apply",
+  "state": {},
+  "flowing": {
+   "who": "cust"
+  },
+  "ops": {
+   "set": {
+    "$.from": "${in}"
+   }
+  },
+  "expect": {
+   "from": {
+    "who": "cust"
+   }
+  }
+ },
+ {
+  "name": "apply-set-nonroot-target-rejected",
+  "op": "apply",
+  "state": {},
+  "ret": {
+   "x": 1
+  },
+  "ops": {
+   "set": {
+    "@.x": "${@.x}"
+   }
+  },
+  "expect": "EXC:set target must write into $ (global state): @.x"
+ },
+ {
+  "name": "apply-delete-nonroot-target-rejected",
+  "op": "apply",
+  "state": {
+   "x": 1
+  },
+  "ops": {
+   "delete": [
+    "@.x"
+   ]
+  },
+  "expect": "EXC:delete target must write into $ (global state): @.x"
+ },
+ {
+  "name": "pred-truthy-true",
+  "op": "pred",
+  "cond": "$.ok",
+  "state": {
+   "ok": true
+  },
+  "expect": true
+ },
+ {
+  "name": "pred-truthy-false",
+  "op": "pred",
+  "cond": "$.ok",
+  "state": {
+   "ok": false
+  },
+  "expect": false
+ },
+ {
+  "name": "pred-truthy-missing",
+  "op": "pred",
+  "cond": "$.ok",
+  "state": {},
+  "expect": false
+ },
+ {
+  "name": "pred-eq-true",
+  "op": "pred",
+  "cond": {
+   "path": "$.k",
+   "eq": "big"
+  },
+  "state": {
+   "k": "big"
+  },
+  "expect": true
+ },
+ {
+  "name": "pred-eq-false",
+  "op": "pred",
+  "cond": {
+   "path": "$.k",
+   "eq": "big"
+  },
+  "state": {
+   "k": "small"
+  },
+  "expect": false
+ },
+ {
+  "name": "pred-eq-at",
+  "op": "pred",
+  "cond": {
+   "path": "@.n",
+   "eq": 5
+  },
+  "result": {
+   "n": 5
+  },
+  "expect": true
+ },
+ {
+  "name": "value-sentinel-message",
+  "op": "value",
+  "value": "${@.__error__.message}",
+  "ret": {
+   "__error__": {
+    "attempts": 2,
+    "message": "kaboom",
+    "name": "RuntimeError"
+   }
+  },
+  "expect": "kaboom"
+ },
+ {
+  "name": "render-sentinel-embed",
+  "op": "render",
+  "template": "failed: ${$.fetch.__error__.message} (x${$.fetch.__error__.attempts})",
+  "state": {
+   "fetch": {
+    "__error__": {
+     "attempts": 2,
+     "message": "kaboom",
+     "name": "E"
+    }
+   }
+  },
+  "expect": "failed: kaboom (x2)"
+ },
+ {
+  "name": "pred-sentinel-truthy",
+  "op": "pred",
+  "cond": "$.fetch.__error__",
+  "state": {
+   "fetch": {
+    "__error__": {
+     "attempts": 1,
+     "message": "m",
+     "name": "E"
+    }
+   }
+  },
+  "expect": true
+ },
+ {
+  "name": "pred-sentinel-name-eq",
+  "op": "pred",
+  "cond": {
+   "path": "$.fetch.__error__.name",
+   "eq": "ValueError"
+  },
+  "state": {
+   "fetch": {
+    "__error__": {
+     "attempts": 1,
+     "message": "m",
+     "name": "ValueError"
+    }
+   }
+  },
+  "expect": true
+ },
+ {
+  "name": "pred-ne-true",
+  "op": "pred",
+  "cond": {
+   "path": "$.tier",
+   "ne": "gold"
+  },
+  "state": {
+   "tier": "silver"
+  },
+  "expect": true
+ }
+]
