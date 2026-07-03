@@ -60,6 +60,10 @@ class TestRunner(unittest.TestCase):
         self.assertEqual(outcome_eval.extract_code("```python\ndef g(): pass\n```"),
                          "def g(): pass\n")
         self.assertEqual(outcome_eval.extract_code("def h(): pass"), "def h(): pass")
+        # truncated-at-token-limit reply: opening fence, no closer (live smoke caught this —
+        # the raw fence reached the interpreter and every check failed on exit_code)
+        self.assertEqual(outcome_eval.extract_code("```python\ndef t(): pass"),
+                         "def t(): pass")
 
 
 @unittest.skipUnless(_OK, "skill scripts not importable")

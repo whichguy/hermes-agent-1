@@ -95,6 +95,8 @@ def main(argv=None):
                    help="run with the families layer on (lens-tagged questions; default: flat generator).")
     p.add_argument("--premortem", choices=["auto", "on", "off"], default="auto",
                    help="premortem lens setting when --families is on.")
+    p.add_argument("--reach", choices=["auto", "on", "off"], default="auto",
+                   help="reach lens (#29) setting when --families is on.")
     args = p.parse_args(argv)
 
     cfg = dict(infogain.DEFAULTS)
@@ -103,7 +105,8 @@ def main(argv=None):
     cfg["max_rounds"] = 1
     cfg["mode"] = "focus"  # value_judge stays at the shipped deepseek default
     if args.families:
-        cfg["families"] = infogain.families_cfg(args.premortem, families_model=args.gen_model)
+        cfg["families"] = infogain.families_cfg(args.premortem, families_model=args.gen_model,
+                                                reach=args.reach)
 
     pool = testbank.ALL if args.include_life else testbank.BANK
     prompts = [x for x in pool if not args.ids or x["id"] in args.ids]

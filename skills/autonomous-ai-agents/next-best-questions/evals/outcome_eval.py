@@ -94,10 +94,15 @@ def solve_prompt(task, qa):
 
 
 def extract_code(text):
-    m = re.search(r"```(?:python)?\s*\n(.*?)```", text or "", re.DOTALL)
+    text = text or ""
+    m = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
     if m:
         return m.group(1)
-    return text or ""
+    # unclosed fence (reply truncated at the token limit): take everything after the opener
+    m = re.search(r"```(?:python)?\s*\n(.*)", text, re.DOTALL)
+    if m:
+        return m.group(1)
+    return text
 
 
 def run_tests(code, tests, timeout=10):
@@ -194,7 +199,7 @@ def run_script_task(task, code, timeout=60):
 
 def solve_and_score(task, qa, solver_model, timeout=240):
     out = pipeline.raw_chat(solver_model, solve_prompt(task, qa),
-                            timeout=timeout, num_predict=1200)
+                            timeout=timeout, num_predict=2400)
     code = extract_code(out.get("content"))
     if task.get("kind") == "script":
         frac, per = run_script_task(task, code)
