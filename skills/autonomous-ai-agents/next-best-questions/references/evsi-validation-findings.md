@@ -640,6 +640,33 @@ there is UNMEASURABLE by the realized proxy (shared blindness). Hence:
 the plan change". First experiment in the program whose gate can be an objective outcome
 (this harness) rather than the judged proxy.
 
+### #28 gate verdict (2026-07-03, same day): NO ADOPT — partial positive below the bar
+
+Run: 28 tasks (20 micro + 8 agentic, the #31 tier) × {baseline, nbq, nbq-behavior,
+nbq-derive-behavior, zeroshot}, K=3, all-deepseek (`~/.hermes/outcome_28.json`); proxy sanity
+n=12 behavior-elicited realized run (`evsi_behavior_sanity.json`).
+
+| arm (combined n=28) | Δpass vs baseline | unanswerable |
+|---|---|---|
+| zeroshot | +0.327 (16W/0L) | 30% |
+| nbq-behavior | +0.170 (8W/1L) | 65% |
+| nbq-derive-behavior | +0.145 (10W/1L) | 52% |
+| nbq | +0.105 (6W/0L) | 76% |
+
+Pre-registered rule, applied mechanically: (1) paired nbq-behavior vs nbq = **+0.064, 6W/5L** —
+fails the wins ≥ 2×losses guard; (2) unanswerable 65% > the ~60% bar; (3) proxy sanity ρ +0.204
+✓ (just above the ≥~0.2 floor; expectedly weaker than absolute's +0.244 — the proxy measures
+response-diff, which behavior-Δ deliberately diverges from). **Verdict: keep `absolute` as the
+default; behavior stays built + off** (`--value-judge-mode behavior`). The honest reading is a
+directional but insufficient win: on the agentic home turf behavior nearly TRIPLED the skill's
+benefit (+0.077→+0.219) and cut waste (82%→65-67% unanswerable), but zeroshot beat even
+nbq-behavior by +0.157 (9W/1L) — so the value model was only PART of P4's gap. The remainder is
+generation altitude: even at home, the machinery's candidates skew away from the first-order
+unknowns a naive ask surfaces. The agentic tier did NOT rescue the machinery (nbq unanswerable
+was 88% there; zeroshot +0.394). #30's re-open condition (unanswerable >50% despite a #28 win)
+is moot as registered — #28 didn't win — but the altitude finding is the real successor
+hypothesis: the next lever is GENERATION (ask-the-first-order-question exposure), not judging.
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it

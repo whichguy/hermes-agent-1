@@ -261,6 +261,40 @@ refill round so fresh tombstones get exploited.
   only exist below threshold. The report wording reflects this ("refill rounds re-plan against
   it").
 
+## Behavior-Δ judge (#28) — built, off by default, the first OBJECTIVELY-gated experiment
+
+The objective-outcome tier exposed the absolute judge's volume bias (Δplan read as text change:
+one-token/output-flipping questions gated, boilerplate promoted — findings §Objective-outcome).
+`value_judge_mode="behavior"` re-elicits Δplan as **behavior/outcome change of the delivered
+result** ("consequence, not code size"; one-token flip ~1.0, robustness boilerplate ≤0.2) — same
+JSON contract, `voi.py` untouched. **Gate verdict (2026-07-03): NO ADOPT** — paired vs absolute
+on 28 objective tasks: +0.064 with 6W/5L (broad-win guard requires wins ≥ 2×losses); unanswerable
+65% vs the ~60% bar; proxy sanity passed (ρ +0.204). Directionally right — on the agentic tier it
+nearly tripled the skill's end-to-end benefit — but zeroshot still out-asked it by +0.157, so the
+value model is only part of P4's gap; the remainder is generation altitude (successor hypothesis:
+first-order-question exposure at GENERATION, not judging). Stays built for re-testing; the
+objective harness is now the standing gate for any elicitation change.
+
+## Reach lens (#29) — a fifth question family: reachable other points of view
+
+Jim's framing: vantage asks "would the answer differ by where you look from?"; reach asks
+**"does a DIFFERENT, REACHABLE point of view exist that would turn an unknown into an
+observable — possibly via CHAINED hops (machine → machine → service)?"** It hunts the
+answerability/derivability term no other lens hunts, and connects to derive-or-ask (derivability
+is vantage-relative: CANNOT_DERIVE from here ≠ from inside the container). The ranker only
+SURFACES reach questions; the investigator executes any actual hop. Directive requires naming
+the hop chain, the access each hop needs, what the final vantage reveals, and the hop's
+cost/risk (ASPI, arXiv:2605.17324: every hop widens the injection/trust surface).
+- Mechanics mirror premortem exactly (one `_LENS_DIRECTIVE` entry + a gated `families_prompt`
+  line + auto knob); the auto gate IS the vantage gate (`_reach_relevant = _vantage_relevant`) —
+  same systems/access surface, no new false-positive list. Default `auto`, like vantage.
+- **Tier-1 verdict (2026-07-03): PASS.** Two-arm scan over the 11 gate-firing bank prompts:
+  reach questions survive buckets exactly on access/systems tasks (debug-slow 0.63,
+  security-audit 0.66, fix-test 0.61, setup-ci 0.52, gmail-find 0.47/0.58 — on-mission for
+  retrieval-with-access) and prune to ZERO on whatsapp-send / research-* / query-db / deploy-app.
+  The gate proposes, the formula disposes. Tier-2 (realized per-lens attribution, n=6) in
+  `evsi_reach_t2.json` — bar is "adds signal, not noise" (exposure lens).
+
 ## Pre-mortem lens (#25) — a fourth question family, auto-on by design
 
 The three existing lenses cover coverage (scoped), premise (contrarian), and source-divergence

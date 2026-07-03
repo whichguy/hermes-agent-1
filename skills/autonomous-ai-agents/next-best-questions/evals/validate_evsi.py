@@ -278,6 +278,8 @@ def main(argv=None):
                         "attribution (default: flat generator, empty lens).")
     p.add_argument("--premortem", choices=["auto", "on", "off"], default="auto",
                    help="premortem lens setting when --families is on.")
+    p.add_argument("--reach", choices=["auto", "on", "off"], default="auto",
+                   help="reach lens (#29) setting when --families is on.")
     p.add_argument("--keep-responses", action="store_true",
                    help="store baseline + re-derived response TEXTS on each row so judge variants "
                         "can be A/B'd offline (evals/rejudge.py) without a second realized pass.")
@@ -307,7 +309,8 @@ def main(argv=None):
     if getattr(args, "value_judge_mode", None):
         cfg["value_judge_mode"] = args.value_judge_mode  # #28 proxy-sanity: behavior-Δ elicitation
     if args.families:
-        cfg["families"] = infogain.families_cfg(args.premortem, families_model=args.gen_model)
+        cfg["families"] = infogain.families_cfg(args.premortem, families_model=args.gen_model,
+                                                reach=args.reach)
     judge_model = pipeline.resolve_alias(args.judge_model)  # alias -> real model name
     preflight_model(judge_model, "judge")
     preflight_model(pipeline.resolve_alias(cfg["value_judge_model"]), "elicit")
