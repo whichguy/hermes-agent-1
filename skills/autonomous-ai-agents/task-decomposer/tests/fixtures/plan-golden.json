@@ -1,0 +1,37 @@
+{
+  "schema": 2,
+  "slug": "migrate-billing-db-postgres",
+  "cycle": 2,
+  "disposition": "tasks",
+  "rationale": "logical replication is the only untried method that satisfies the no-downtime constraint",
+  "question": null,
+  "tasks": [
+    {
+      "id": "t1",
+      "method": "pglogical publication on source",
+      "description": "Create a pglogical publication for the billing schema on the source database and confirm it is active.",
+      "success_criterion": "SELECT from pg_publication shows the billing publication with all billing tables attached",
+      "intent_link": "logical replication (the chosen no-downtime method) requires a source publication before anything can subscribe to it",
+      "depends_on": [],
+      "status": "pending"
+    },
+    {
+      "id": "t2",
+      "method": "subscription on target with initial sync",
+      "description": "Create the subscription on the target Postgres instance and let the initial table sync finish.",
+      "success_criterion": "pg_subscription_rel reports state 'r' (ready) for every billing table",
+      "intent_link": "the migration intent requires data present on the target; this is the no-downtime path now that t1's publication exists",
+      "depends_on": ["t1"],
+      "status": "pending"
+    },
+    {
+      "id": "verify",
+      "method": "row-count and checksum verification",
+      "description": "Compare row counts and per-table checksums between source and target for the billing schema.",
+      "success_criterion": "Every billing table matches source in row count and checksum, proving the migration intent holds",
+      "intent_link": "the intent is a verified migration, not just a completed sync — this is the mandatory final verification task",
+      "depends_on": ["t2"],
+      "status": "pending"
+    }
+  ]
+}
