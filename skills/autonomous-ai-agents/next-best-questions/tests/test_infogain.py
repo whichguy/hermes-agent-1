@@ -1066,6 +1066,179 @@ class TestModeConfig(unittest.TestCase):
         self.assertIn("[weight 0.60]", md)
 
 
+@unittest.skipUnless(_PIPELINE_OK, "ask skill / model_utils not importable")
+class TestDeriveOrAsk(unittest.TestCase):
+    """Derive-or-ask: derivability claims are tested, not trusted. Derived answers become
+    tombstones in the evidence context; failed claims restore the question's uncertainty."""
+
+    def _cfg(self, argv):
+        return infogain.resolve_config(infogain.build_parser().parse_args(argv))
+
+    @staticmethod
+    def _q(name, derivable, target=None):
+        return {"question": name, "target": target or name,
+                "derivable_prob": derivable,
+                "answers": [{"answer": "A1", "prob": 0.6, "delta_plan": 0.5, "stakes": 0.5},
+                            {"answer": "A2", "prob": 0.4, "delta_plan": 0.3, "stakes": 0.4}]}
+
+    def _run(self, cfg, rounds_qs, derive_fn):
+        """Drive run() with scripted generation rounds and a scripted derivation oracle.
+        rounds_qs: list of question-lists, one per generation call (then [] forever).
+        Returns (result, gen_evidence_snapshots, derive_calls)."""
+        gen_i = {"i": 0}
+        gen_ev = []
+        derive_calls = []
+
+        def fake_gen(problem, framing, model, n, avoid, timeout, sink=None, samples=1,
+                     temperature=0.0, evidence=None):
+            gen_ev.append(list(evidence or []))
+            qs = rounds_qs[gen_i["i"]] if gen_i["i"] < len(rounds_qs) else []
+            gen_i["i"] += 1
+            return list(qs), None
+
+        def fake_derive(problem, framing, rec, model, evidence=None, timeout=60, sink=None):
+            derive_calls.append(rec["question"])
+            return derive_fn(rec)
+
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d", "success_criteria": [],
+                                              "baseline_plan": "base"}, None)), \
+             mock.patch.object(pipeline, "generate_questions", side_effect=fake_gen), \
+             mock.patch.object(pipeline, "project_answers_batch",
+                               side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch",
+                               side_effect=lambda p, f, b, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "attempt_derivation", side_effect=fake_derive):
+            result = infogain.run("vague task", cfg)
+        return result, gen_ev, derive_calls
+
+    def _base_cfg(self, **kw):
+        cfg = {k: v for k, v in infogain.DEFAULTS.items()}
+        cfg["families"] = {"enabled": False}
+        cfg["max_rounds"] = 1
+        cfg.update(kw)
+        return cfg
+
+    def test_derived_becomes_tombstone_and_leaves_bucket(self):
+        cfg = self._base_cfg(auto_derive="on")
+        result, gen_ev, calls = self._run(
+            cfg, [[self._q("Which gateway?", 0.9), self._q("What limits?", 0.1, "limits")]],
+            lambda rec: {"answer": "Kong", "derived": True})
+        self.assertEqual(calls, ["Which gateway?"])          # only the high claim tested
+        self.assertEqual(len(result["derived"]), 1)
+        self.assertEqual(result["derived"][0]["answer"], "Kong")
+        self.assertNotIn("Which gateway?", [r["question"] for r in result["bucket"]])
+        self.assertIn("What limits?", [r["question"] for r in result["bucket"]])
+        self.assertEqual(result["evidence"], [])             # caller-provided facts only
+        rec = [r for r in result["all_scored"] if r["question"] == "Which gateway?"][0]
+        self.assertEqual(rec["recommendation"], "DERIVED")
+        self.assertEqual(rec["derivability_tested"], "derived")
+        # final-round derivation grants ONE extra refill round, which re-plans against the
+        # tombstone (the round-2 generation call must see it as evidence)
+        self.assertEqual(len(gen_ev), 2)
+        self.assertTrue(any("Kong" in e for e in gen_ev[1]))
+
+    def test_cannot_derive_restores_uncertainty(self):
+        cfg = self._base_cfg(auto_derive="on")
+        result, gen_ev, calls = self._run(
+            cfg, [[self._q("Which gateway?", 0.9)]],
+            lambda rec: {"answer": "", "derived": False})
+        rec = [r for r in result["all_scored"] if r["question"] == "Which gateway?"][0]
+        self.assertEqual(rec["derivability_tested"], "failed")
+        self.assertEqual(rec["derivable_prob"], infogain.DEFAULTS["cannot_derive_cap"])
+        self.assertNotEqual(rec.get("recommendation"), "DERIVED")
+        # re-scored with honest uncertainty -> clears the floor and ranks
+        self.assertIn("Which gateway?", [r["question"] for r in result["bucket"]])
+        self.assertEqual(len(gen_ev), 1)                     # no extra round without a derivation
+        self.assertEqual(result["derived"], [])
+
+    def test_absent_key_is_off_and_flag_off_is_inert(self):
+        # the SAFETY INVARIANT (families/#24/#26 precedent): a cfg straight from DEFAULTS has
+        # no auto_derive key -> the pass must not run; explicit "off" likewise.
+        for cfg in (self._base_cfg(), self._base_cfg(auto_derive="off")):
+            result, _, calls = self._run(cfg, [[self._q("Which gateway?", 0.9)]],
+                                         lambda rec: {"answer": "X", "derived": True})
+            self.assertEqual(calls, [])
+            self.assertEqual(result["derived"], [])
+            self.assertNotIn("DERIVED",
+                             [r.get("recommendation") for r in result["all_scored"]])
+
+    def test_threshold_and_per_round_cap(self):
+        cfg = self._base_cfg(auto_derive="on", derive_max_per_round=2)
+        qs = [self._q("q95", 0.95), self._q("q90", 0.90), self._q("q85", 0.85),
+              self._q("q50", 0.50)]
+        result, _, calls = self._run(cfg, [qs], lambda rec: {"answer": "", "derived": False})
+        self.assertEqual(calls, ["q95", "q90"])              # top claims first, cap respected
+        rec85 = [r for r in result["all_scored"] if r["question"] == "q85"][0]
+        self.assertIsNone(rec85.get("derivability_tested"))  # past cap: today's behavior
+        rec50 = [r for r in result["all_scored"] if r["question"] == "q50"][0]
+        self.assertIsNone(rec50.get("derivability_tested"))  # below threshold: untouched
+
+    def test_extra_round_granted_at_most_once(self):
+        cfg = self._base_cfg(auto_derive="on")
+        result, gen_ev, calls = self._run(
+            cfg, [[self._q("d1", 0.9)], [self._q("d2", 0.9)]],
+            lambda rec: {"answer": "ans-" + rec["question"], "derived": True})
+        # round 1 derives -> extra round; round 2 derives too but NO second extension
+        self.assertEqual(len(gen_ev), 2)
+        self.assertEqual(len(result["derived"]), 2)
+        self.assertEqual(result["rounds_used"], 2)
+
+    def test_attempt_derivation_escape_and_malformed(self):
+        # hedges are non-answers wearing an answer's clothes — the do-no-harm check caught
+        # fast tombstoning "The prompt does not specify whether ..." as a derivation
+        rec = {"question": "Q?"}
+        for content, expect in [("", False), ("CANNOT_DERIVE", False),
+                                ("cannot_derive — no info", False),
+                                ("The prompt does not specify whether tone matters.", False),
+                                ("Not specified in the context.", False),
+                                ("There is insufficient information to say.", False),
+                                ("Kong", True),
+                                ("Use HTTP-only cookies for browser SPAs.", True)]:
+            with mock.patch.object(pipeline, "raw_chat",
+                                   return_value={"content": content, "elapsed": 0.1,
+                                                 "error": None}):
+                got = pipeline.attempt_derivation("p", {"goal": "g"}, rec, "m")
+            self.assertEqual(got["derived"], expect, content)
+
+    def test_derive_prompt_is_knowledge_inclusive(self):
+        # pinned: a strict "from the prompt alone" wording re-creates the bucket-flooding
+        # failure mode (knowledge-derivable claims failing derivation) — see design-decisions.
+        p = pipeline.derive_answer_prompt("prob", {"goal": "g"}, "Q?", ["f1"])
+        self.assertIn("your own general knowledge", p)
+        self.assertIn("CANNOT_DERIVE", p)
+        self.assertIn("f1", p)
+
+    def test_report_renders_derived_section(self):
+        result = {"problem": "p", "evidence": [], "framing": {"goal": "g", "decision": "d",
+                  "success_criteria": [], "baseline_plan": "b"},
+                  "derived": [{"question": "Which gateway?", "answer": "Kong",
+                               "derivable_prob": 0.9, "round": 1}],
+                  "config": dict(infogain.DEFAULTS, mode="focus"), "rounds_used": 1,
+                  "candidates_considered": 2, "all_scored": [], "bucket": [],
+                  "discarded_count": 0, "min_met": False, "pre_answer": [], "usage": {}}
+        md = infogain.render_markdown(result)
+        self.assertIn("Resolved during analysis", md)
+        self.assertIn("Kong", md)
+        self.assertIn("tombstoned", md)
+
+    def test_config_resolution_auto_derive(self):
+        self.assertEqual(self._cfg(["p"])["auto_derive"], "on")          # CLI default ON
+        self.assertEqual(self._cfg(["--auto-derive", "off", "p"])["auto_derive"], "off")
+        old = os.environ.get("INFOGAIN_AUTO_DERIVE")
+        try:
+            os.environ["INFOGAIN_AUTO_DERIVE"] = "off"
+            self.assertEqual(self._cfg(["p"])["auto_derive"], "off")
+            self.assertEqual(self._cfg(["--auto-derive", "on", "p"])["auto_derive"], "on")
+        finally:
+            os.environ.pop("INFOGAIN_AUTO_DERIVE", None) if old is None else os.environ.update(
+                {"INFOGAIN_AUTO_DERIVE": old})
+        cfg = self._cfg(["--derive-model", "glm", "--derive-threshold", "0.7", "p"])
+        self.assertEqual(cfg["derive_model"], "glm")
+        self.assertEqual(cfg["derive_threshold"], 0.7)
+        self.assertEqual(self._cfg(["p"])["derive_model"], "")           # "" -> judge model
+
+
 @unittest.skipUnless(os.environ.get("INFOGAIN_TEST_LIVE"),
                      "live suite: set INFOGAIN_TEST_LIVE=1 or run tests/run.py live")
 @unittest.skipUnless(_PIPELINE_OK, "ask skill / model_utils not importable")

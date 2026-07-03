@@ -975,6 +975,60 @@ def project_answers_sampled_batch(problem, framing, recs, model, m, timeout=120,
         recs)
 
 
+# ── derive-or-ask: derivable questions become evidence ───────────────────────
+# A question whose answer the model can ALREADY state is not a question — it's evidence wearing
+# a question mark. The projection stage's derivable_prob is only a CLAIM; this stage tests it:
+# derive the answer (the caller tombstones it into the evidence context, and later rounds re-plan
+# against it) or admit CANNOT_DERIVE (the claim was inflated — the caller restores the question's
+# uncertainty and it re-enters ranking honestly). The prompt is deliberately knowledge-INCLUSIVE:
+# derivable_prob means "asking the user adds nothing", which covers facts in the prompt, the
+# established facts, AND the model's own general knowledge. A strict "from the prompt alone"
+# wording makes knowledge-derivable questions fail derivation, and the correction branch would
+# then wrongly re-inflate their U and flood buckets with questions the gate retires correctly
+# today (probe 2026-07-03: 22% of bank candidates claim derivable ≥0.8, mostly knowledge-class;
+# the escape is honest — 0/12 fabrications on user-only/tool-only questions, both models).
+
+CANNOT_DERIVE = "CANNOT_DERIVE"
+
+# Models (esp. weaker ones) sometimes HEDGE instead of using the escape token — "the prompt
+# does not specify whether ..." is a non-answer wearing an answer's clothes, and tombstoning
+# it would inject junk evidence (caught by the 2026-07-03 do-no-harm check on gmail-triage).
+_HEDGE_RE = re.compile(
+    r"cannot[\s_]derive|does\s+not\s+(specify|say|state|mention|indicate)|not\s+specified"
+    r"|no\s+information|unclear\s+from|insufficient\s+(context|information)"
+    r"|(prompt|context|spec)\s+(does\s?n[o']t|lacks)", re.IGNORECASE)
+
+
+def derive_answer_prompt(problem, framing, question, evidence=None):
+    return (
+        "Answer this question using the PROMPT, the ESTABLISHED FACTS, or your own general "
+        "knowledge.\n\n"
+        f"PROMPT:\n{problem}\n"
+        f"{_evidence_block(evidence, 'treat as known facts')}"
+        f"\nGOAL: {framing.get('goal', '')}\n"
+        f"QUESTION: {question}\n\n"
+        "If none of these suffice to answer it — the answer is genuinely unknown, user-specific, "
+        f"or would require investigating systems you cannot see — reply with exactly {CANNOT_DERIVE}.\n"
+        "Otherwise reply with ONLY the answer, in one short sentence."
+    )
+
+
+def attempt_derivation(problem, framing, rec, model, evidence=None, timeout=60, sink=None):
+    """Test a derivability claim by attempting the derivation. Returns {answer, derived}.
+
+    Empty/errored/CANNOT_DERIVE replies are all not-derived — the safe default is to keep
+    the question a question."""
+    out = raw_chat(model, derive_answer_prompt(problem, framing, rec.get("question", ""),
+                                               evidence),
+                   timeout=timeout, temperature=0.0, num_predict=120)
+    if sink is not None:
+        sink.append(out)
+    ans = (out.get("content") or "").strip()
+    if not ans or _HEDGE_RE.search(ans):
+        return {"answer": "", "derived": False}
+    return {"answer": ans, "derived": True}
+
+
 def judge_plan_change_batch(problem, framing, baseline_plan, recs, model, timeout=150,
                             capture=False):
     return _parallel(

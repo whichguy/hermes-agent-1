@@ -49,6 +49,18 @@ U = normalized_entropy(P(a)) · (1 − derivable_prob)
 *measure* U from simulated answers rather than asking the model to self-rate ambiguity — CLAMBER
 (Zhang et al. 2024) shows LLMs are unreliable self-judges of when to clarify.
 
+**The posterior is the validity test — and derivability claims are experiments, not facts
+(derive-or-ask, 1.3.0).** The projected answer distribution is the model's posterior over the
+unknown. Peaked + derivable → not a valid question: it's *evidence wearing a question mark*, so
+the skill now derives the answer outright and tombstones it into the working context (the
+question retires; later rounds re-plan against the fact). Spread + underivable → a valid question
+whose weight is the expected impact of resolving genuine ignorance. And because CLAMBER cuts both
+ways — self-rated derivability is as unreliable as self-rated ambiguity — a claim of "I basically
+know it" is **tested by an actual derivation attempt**: stating the answer converts it to
+evidence; CANNOT_DERIVE falsifies the claim and the question re-enters ranking with honest
+uncertainty. Questions are weighted by what the model genuinely doesn't know — never inflated by
+answers it secretly has, never suppressed by confidence it can't cash.
+
 ## 4. The composite value and the gate
 
 ```

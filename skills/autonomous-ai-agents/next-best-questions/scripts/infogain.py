@@ -62,12 +62,20 @@ DEFAULTS = {
     "gen_timeout": 180,
     "answer_timeout": 120,
     "judge_timeout": 150,
+    "derive_threshold": 0.6,     # derive-or-ask: test derivability claims at/above this (the
+                                 # distribution is bimodal — 22% ≥0.8, 2% in 0.3-0.6 — so uncritical)
+    "derive_max_per_round": 4,   # cost cap; highest-claim candidates first
+    "cannot_derive_cap": 0.2,    # failed claim -> derivable_prob capped here, question re-scored
+    "derive_timeout": 60,
+    "derive_model": "",          # "" -> value_judge_model (deepseek): probe showed fast is
+                                 # over-strict on knowledge-derivable questions
 }
 _INT = {"min_bucket_size", "target_bucket_size", "hard_cap", "questions_per_round",
         "answers_per_question", "answer_samples", "solution_samples", "max_rounds", "gen_samples",
-        "plan_timeout", "gen_timeout", "answer_timeout", "judge_timeout"}
+        "plan_timeout", "gen_timeout", "answer_timeout", "judge_timeout",
+        "derive_max_per_round", "derive_timeout"}
 _MODEL_KEYS = ("plan_model", "question_gen_model", "answer_model", "value_judge_model",
-               "consolidate_model")
+               "consolidate_model", "derive_model")
 
 # Named presets over the breadth knobs. "focus" = the (research-grounded) prioritized
 # top-few default; "breadth" = wider coverage via more questions and more rounds, a
@@ -200,6 +208,18 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
     # stated probs survive as `stated_prob`. Absent key → "stated", byte-identical default.
     prob_mode = str(cfg.get("answer_prob_mode") or "stated").strip().lower()
 
+    # Derive-or-ask seam: a derivability claim ≥ derive_threshold is TESTED, not trusted —
+    # derived answers are tombstoned into the evidence context (later rounds re-plan against
+    # them; the resolved question retires naturally), failed claims restore the question's
+    # uncertainty. Absent key → OFF (byte-identical for harness-built cfgs, the families/#26
+    # precedent); the CLI resolves it default-ON via resolve_config.
+    auto_derive = str(cfg.get("auto_derive") or "off").strip().lower() == "on"
+    derive_model = resolve_alias(str(cfg.get("derive_model") or "").strip()
+                                 or cfg["value_judge_model"])
+    evidence = list(evidence or [])
+    orig_evidence_n = len(evidence)   # tombstones appended past this index are derived facts
+    derived = []
+
     # Families layer (domain exposure): when on, round 1 generates scoped + contrarian + vantage
     # families and questions within each; selection still scores each question on its own merit, with
     # MMR using the family-diversity tier (hierarchical_similarity) to spread picks across families.
@@ -240,7 +260,9 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
 
     seen, scored_all = [], []
     rounds_used = 0
-    for _ in range(cfg["max_rounds"]):
+    rounds_budget = cfg["max_rounds"]     # +1 at most once, when a final-round derivation lands
+    extra_round_granted = False
+    while rounds_used < rounds_budget:
         rounds_used += 1
         avoid = [r["question"] for r in seen]
         gen_sink, cons_sink, fq_sink = None, None, None
@@ -319,8 +341,57 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
             voi.score_record(r)
         scored_all.extend(fresh)
 
+        # Derive-or-ask: test this round's derivability claims BEFORE selection (the gate would
+        # otherwise SKIP exactly these records — the primary derive targets). Runs on every fresh
+        # record regardless of its eventual selection tag.
+        if auto_derive:
+            claims = sorted(
+                (r for r in fresh
+                 if r.get("derivable_prob", 0.0) >= cfg.get("derive_threshold", 0.6)
+                 and not r.get("derivability_tested")),
+                key=lambda r: -r.get("derivable_prob", 0.0))
+            claims = claims[:int(cfg.get("derive_max_per_round", 4))]
+            derived_this_round = False
+            if claims:
+                log(f"round {rounds_used}: testing {len(claims)} derivability claim(s) "
+                    f"via {derive_model} ...")
+            for r in claims:
+                d_sink = [] if trace else None
+                got = pipeline.attempt_derivation(
+                    problem, framing, r, derive_model, evidence=evidence,
+                    timeout=cfg.get("derive_timeout", 60), sink=d_sink)
+                if trace:
+                    r["derive_call"] = d_sink
+                if got["derived"]:
+                    r["derivability_tested"] = "derived"
+                    r["recommendation"] = "DERIVED"
+                    r["derived_answer"] = got["answer"]
+                    r["derived_round"] = rounds_used
+                    # Tombstone: later rounds re-plan against this as an established fact, so
+                    # the question retires naturally instead of being re-asked.
+                    evidence.append(f"{r['question']} -> {got['answer']} (derived during analysis)")
+                    derived.append({"question": r["question"], "answer": got["answer"],
+                                    "derivable_prob": r.get("derivable_prob"),
+                                    "round": rounds_used})
+                    derived_this_round = True
+                else:
+                    # The claim failed its test: the model said it basically knew, but couldn't
+                    # state it. Restore the question's uncertainty; it re-enters ranking honestly.
+                    r["derivability_tested"] = "failed"
+                    r["derivable_prob"] = min(r.get("derivable_prob", 0.0),
+                                              cfg.get("cannot_derive_cap", 0.2))
+                    voi.score_record(r)
+            # Fresh tombstones only reshape LATER rounds (framing is once-per-run; this round's
+            # candidates were projected pre-derivation) — grant one bounded extra round so a
+            # final-round derivation is actually exploited.
+            if derived_this_round and rounds_used >= rounds_budget and not extra_round_granted:
+                rounds_budget += 1
+                extra_round_granted = True
+                log("final-round derivation: granting one extra refill round to exploit it")
+
+        selectable = [r for r in scored_all if r.get("recommendation") != "DERIVED"]
         bucket, _ = voi.rank_and_select(
-            scored_all, discard_threshold=cfg["discard_threshold"],
+            selectable, discard_threshold=cfg["discard_threshold"],
             pre_answer_threshold=cfg["pre_answer_threshold"],
             hard_cap=cfg["hard_cap"], mmr_lambda=cfg["mmr_lambda"], sim_fn=sim_fn,
             rel_frac=cfg["rel_keep_frac"])
@@ -346,7 +417,7 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
                 "bucket_after_round": len(bucket),
                 "best_fresh_value": round(best_fresh, 4),
                 "stop_reason": stop or ("max_rounds reached"
-                                        if rounds_used >= cfg["max_rounds"] else "continue"),
+                                        if rounds_used >= rounds_budget else "continue"),
             })
 
         if stop is not None:
@@ -354,7 +425,8 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
             break
 
     bucket, discarded = voi.rank_and_select(
-        scored_all, discard_threshold=cfg["discard_threshold"],
+        [r for r in scored_all if r.get("recommendation") != "DERIVED"],
+        discard_threshold=cfg["discard_threshold"],
         pre_answer_threshold=cfg["pre_answer_threshold"],
         hard_cap=cfg["hard_cap"], mmr_lambda=cfg["mmr_lambda"], sim_fn=sim_fn,
         rel_frac=cfg["rel_keep_frac"])
@@ -363,7 +435,8 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
     usage["wall_seconds"] = round(time.time() - _t0, 1)
     result = {
         "problem": problem,
-        "evidence": list(evidence or []),
+        "evidence": list(evidence[:orig_evidence_n]),  # caller-provided facts only
+        "derived": derived,  # [] unless auto_derive tombstoned answers during the run
         "usage": usage,
         "framing": framing,
         "framing_error": ferr,
@@ -390,6 +463,8 @@ def _trace_question(r):
         "type": r.get("type"),
         "why": r.get("why"),
         "derivable_prob": r.get("derivable_prob"),
+        "derivability_tested": r.get("derivability_tested"),  # derived | failed | None(untested)
+        "derived_answer": r.get("derived_answer"),
         "prob_mode_used": r.get("prob_mode_used"),   # #26: sampled | stated | stated-fallback
         "sample_counts": r.get("sample_counts"),
         "answers": [{"answer": a.get("answer"), "prob": a.get("prob"),
@@ -526,6 +601,17 @@ def render_markdown(result):
 
     note = (f"_{result['discarded_count']} lower-value/redundant question(s) "
             f"discarded._") if result["discarded_count"] else ""
+    if result.get("derived"):
+        derived_lines = "\n".join(
+            f"- **{d['question']}** → {d['answer']}  _(claimed derivable "
+            f"{d.get('derivable_prob', 0):.2f}; round {d.get('round', '?')})_"
+            for d in result["derived"])
+        note = ("### Resolved during analysis — treated as evidence\n"
+                "These were never really questions: the model could already state the answer, so "
+                "each was tombstoned into the working context (refill rounds re-plan against it, "
+                "and it is established context for your response). Veto any wrong answer and "
+                "re-run with the correction as `--evidence`.\n"
+                f"{derived_lines}\n\n" + note)
     if not result["min_met"]:
         note += (f"\n\n> Bucket holds {len(bucket)} question(s), below the minimum of "
                  f"{result['config']['min_bucket_size']}, after "
@@ -690,6 +776,11 @@ def _dry_run(problem, cfg, evidence=None):
     stages.append("STAGE 3 — judge_plan_change (per question, parallel):\n\n"
                   + pipeline.judge_prompt(problem, framing_stub, "<baseline plan from stage 0>",
                                           q_stub["question"], a_stub))
+    if str(cfg.get("auto_derive") or "off").strip().lower() == "on":
+        stages.append("STAGE 3b — attempt_derivation (derive-or-ask; per high-derivability "
+                      "claim, capped):\n\n"
+                      + pipeline.derive_answer_prompt(problem, framing_stub, q_stub["question"],
+                                                      evidence))
     print(sep.join(stages))
 
 
@@ -728,6 +819,13 @@ def build_parser():
                         "projection call's self-reported probs) or 'sampled' (forced-choice "
                         "frequency over --answer-samples draws; off-by-default experiment, #26). "
                         "(Special-cased outside the auto-flags, like --value-judge-mode.)")
+    p.add_argument("--auto-derive", choices=["on", "off"], default=None,
+                   help="Derive-or-ask (default ON): questions whose answers the model claims it "
+                        "basically knows (derivable_prob >= --derive-threshold) are TESTED — the "
+                        "answer is derived and tombstoned into the evidence context (it was never "
+                        "really a question), or the failed claim is corrected and the question "
+                        "re-enters ranking. 'off' = pre-1.3.0 behavior (claims silently trusted). "
+                        "(Special-cased outside the auto-flags.)")
     p.add_argument("--families", action=argparse.BooleanOptionalAction, default=None,
                    help="Generate FAMILIES of questions first (scoped + contrarian + vantage + "
                         "premortem) for coverage, then score each question on its merit. Default ON; "
@@ -775,6 +873,11 @@ def resolve_config(args):
     # answer_prob_mode (#26): same treatment (CLI > env > "stated" default).
     cfg["answer_prob_mode"] = (getattr(args, "answer_prob_mode", None)
                                or os.environ.get("INFOGAIN_ANSWER_PROB_MODE") or "stated")
+    # auto_derive: default ON for the CLI (jim 2026-07-03); harness-built cfgs (dict(DEFAULTS),
+    # no key) stay OFF for comparability with the powered eval datasets — same absent-key
+    # convention as families/#24/#26.
+    cfg["auto_derive"] = (getattr(args, "auto_derive", None)
+                          or os.environ.get("INFOGAIN_AUTO_DERIVE") or "on")
     return cfg
 
 

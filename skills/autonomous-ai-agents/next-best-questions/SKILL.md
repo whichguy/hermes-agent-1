@@ -223,6 +223,19 @@ model's self-stated probabilities — the #26 experiment; its powered A/B closed
 (a real-contrast null: P moved on 79% of pairs, ranking didn't improve), so the flag exists for
 re-testing, not for live use; stated probs survive as `stated_prob`).
 
+**Derive-or-ask (default ON since 1.3.0):** a question whose answer the model claims it basically
+knows (`derivable_prob ≥ --derive-threshold`, default 0.6) is **tested, not trusted** — a
+derivation attempt (`--derive-model`, default = the value-judge model) either states the answer,
+which is tombstoned into the working context and reported under *"Resolved during analysis —
+treated as evidence"* (it was never really a question), or replies CANNOT_DERIVE, in which case
+the inflated claim is corrected (`--cannot-derive-cap`, default 0.2) and the question re-enters
+ranking with its uncertainty honestly restored. Refill rounds re-plan against the tombstones; a
+derivation landing in the final round grants one bounded extra round. Capped at
+`--derive-max-per-round` (default 4) attempts. Rollback: `--auto-derive off` /
+`INFOGAIN_AUTO_DERIVE=off` (pre-1.3.0 behavior: claims silently trusted, derivable questions
+suppressed without being answered). Eval-harness cfgs built from `DEFAULTS` (no key) stay OFF for
+comparability with the powered datasets.
+
 ## Dependency
 
 Reuses the `ask` skill's dispatch helpers (`model_utils.py`). The scripts resolve it at runtime via

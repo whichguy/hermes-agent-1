@@ -221,6 +221,46 @@ change, 0-1?" judgment. #27 grounds `delta_plan` in a concrete self-consistency 
   Δρ −0.369, wins 1/10. The collapse is inherent to the K-solutions framing, model-robustly
   (findings §Deepseek re-adjudication).
 
+## Derive-or-ask — derivable questions become evidence, tested not trusted (1.3.0, 2026-07-03)
+
+Jim's Bayesian reframe of the gate: the projected answer distribution is the model's posterior.
+Peaked + derivable → **not a valid question — it's evidence wearing a question mark**; spread +
+underivable → a valid question whose weight is the expected impact of resolving genuine ignorance.
+Pre-1.3.0 the skill only *suppressed* the first class (`derivable→U→0→SKIP`): the answer was never
+actually produced, never became evidence, and a *wrongly-inflated* derivability claim silently
+killed a real question. Now every claim ≥ `derive_threshold` is **tested by an actual derivation
+attempt** (`pipeline.attempt_derivation`): success → the answer is **tombstoned into the working
+evidence** (the investigator's tombstone pattern; refill rounds re-plan against it and the
+question retires naturally) and reported under "Resolved during analysis"; CANNOT_DERIVE → the
+claim failed its experiment, `derivable_prob` is capped at `cannot_derive_cap` and the question
+re-scored — it re-enters ranking honestly. A final-round derivation grants one bounded extra
+refill round so fresh tombstones get exploited.
+
+- **The derive prompt is knowledge-INCLUSIVE ("…or your own general knowledge") — load-bearing.**
+  `derivable_prob`'s semantics are "asking adds nothing", which covers prompt facts, established
+  facts, and parametric knowledge. Probe (2026-07-03): 22% of bank candidates claim derivable
+  ≥0.8, largely knowledge-class (all 9 on research-ratelimit); a strict "from the prompt alone"
+  wording makes those FAIL derivation, and the correction branch would re-inflate their U and
+  flood buckets with questions the gate retires correctly today. Pinned by a test.
+- **Derive model = value_judge_model (deepseek), not `fast`:** same probe — fast is over-strict on
+  knowledge questions (CANNOT_DERIVE where deepseek correctly answers). Fabrication risk measured
+  LOW: 0/12 fabrications across both models on user-only/tool-only questions (the escape works);
+  visible provenance in the report is the remaining guard.
+- **Hedges count as failed derivations** (`pipeline._HEDGE_RE`): the do-no-harm check caught fast
+  tombstoning "The prompt does not specify whether …" as if it were an answer — a non-answer
+  wearing an answer's clothes, i.e. junk evidence. Hedge phrasings (does not specify / not
+  specified / insufficient information / …) now route to the CANNOT_DERIVE branch. Pinned in
+  tests.
+- **Default ON for the CLI; absent-key OFF** (the families/#26 byte-identical convention) so
+  harness-built cfgs and the six powered eval datasets stay comparable. Rollback:
+  `INFOGAIN_AUTO_DERIVE=off`. Not a #26 re-open: #26 tested *replacing* stated P(a) elicitation
+  for ranking; this *reconciles* one stated input against a performed computation.
+- **Known residual:** when the bucket early-stops in the same round as a derivation, that round's
+  bucket was projected pre-tombstone (no later round re-plans). Bounded: any bucket member with a
+  claim ≥ threshold was itself derive-tested pre-selection, so stale *derivable* stragglers can
+  only exist below threshold. The report wording reflects this ("refill rounds re-plan against
+  it").
+
 ## Pre-mortem lens (#25) — a fourth question family, auto-on by design
 
 The three existing lenses cover coverage (scoped), premise (contrarian), and source-divergence
