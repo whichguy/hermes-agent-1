@@ -30,3 +30,11 @@ Every iteration commit MUST include sections named `ATTEMPTED`, `WHY`, and `RESU
 commit, `RESULT` must include the actual gate numbers—not only a verdict word—plus Δresult, Δcost,
 and the verdict. A build-stage, pre-gate commit may put `build stage, gate pending` in `RESULT`, but
 it must be followed by a separate verdict commit after the gate runs.
+
+**Git history IS the experiment log.** Every lap commit also cites the KEY GIT REFERENCES its
+learning chains from — the SHAs of the prior laps/experiments whose findings this lap builds on — so
+the history reads as a self-contained learning chain without needing the docs. This holds **even when
+the experimental code is not kept**: a discarded, reverted, or never-shipped experiment STILL gets a
+commit that preserves its thesis (`ATTEMPTED`/`WHY`) and lesson (`RESULT`), plus a reference to what
+was removed and why. A negative result must never vanish because its code didn't ship — the code is
+optional, the logged learning and its provenance are not.
