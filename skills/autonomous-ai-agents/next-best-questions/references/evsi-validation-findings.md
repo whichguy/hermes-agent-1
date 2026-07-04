@@ -752,6 +752,51 @@ order, not retrofitted. Its pre-registration stands unexercised for a future lap
 scalar — `verdict-rubric.md` was sharpened to require a per-axis ceiling (wall, tokens, calls), the
 methodology product of this lap.
 
+## Reach→investigate arm (candidate 3, mocked) — NO ADOPT (iteration three, 2026-07-04)
+
+Iteration three tested candidate 3: does resolving strict-unanswerable questions via a fixture-aware
+mock investigator (observable state, not spec-only) lift objective pass AND create the
+answerability↔pass contrast #30 needs? Pre-reg: `nbq-improve/references/prereg-iteration-three.md`.
+Built an opt-in `nbq-reach-investigate` arm in `outcome_eval.py` (leakage-guarded — the mock never
+sees the test oracle; validated at build time on a crafted observable question → resolved
+`postgres://cfg` from a fixture). Gate: agentic bank n=14, K=3, all-deepseek, `--strict-preflight`,
+930.9s. Durable: `~/.hermes/outcome_eval_iter3.json`.
+
+**The load-bearing number: 0 investigator resolutions across all 42 rows.** The mock never fired once
+— not because it is broken (the build smoke proved it resolves observable questions), but because
+**none of nbq's kept high-EVSI questions were observably resolvable.**
+
+**Pre-registered ADOPT rule (verbatim):** "Adopt the arm as a standing corpus-builder instrument …
+exactly when: Δpass > 0 with wins ≥ 2× losses AND unanswerable materially down AND zero oracle
+leakage." **Result: FAIL** — unanswerable did NOT drop, it *rose* (nbq 78.6% → reach 81.0%, +2.4pts),
+and resolutions = 0 make "unanswerable down" impossible. **Verdict: NO ADOPT / candidate 3 PARKED.**
+
+**The apparent Δpass is an artifact, not the mechanism.** Arm means: baseline 0.351, nbq 0.301,
+reach 0.401 (naive paired reach−nbq = +0.100, 6W/1L/7-tie, p=0.125). But **0/14 tasks asked identical
+questions across the two arms** — each arm runs its own independent stochastic question-generation
+call, so with 0 resolutions the reach arm is simply a *second, unpaired nbq draw*. The +0.100 is
+question-sampling variance, not a treatment effect (the treatment never occurred). #30 does NOT
+un-park: the probe on both arms is uninformative here anyway (all 14 tasks scored frac<1.0, so the
+`fail` outcome has zero variance → r=0.000 on every fail-framing).
+
+**The real product — why the answerability lever keeps failing (intent vs state):** nbq's kept
+high-EVSI questions are about **intent** — "what level of detail is expected?", "which schema?",
+"crash or fall back when the key is missing?" An investigator hop can observe **state** (files, env,
+config) but cannot observe **intent** (what the user *wants*). So resolving-from-observables
+structurally cannot touch the valuable questions. This is the same reason #30 answerability weighting
+parked in iteration two: the unanswerable questions are unanswerable *because they encode
+user-specific intent*, and those are precisely the most valuable clarifications — down-weighting them
+by answerability would down-weight the value. **The answerability/reachability lever looks like a
+dead-end for this task class; the value is IN the intent questions, and intent is answerable only by
+the user (candidate 2, nbq→relentless, where a real user answers), not by a vantage or a hop.**
+
+**Methodology banked (gate-validity):** an answering-side mechanism must be tested with the
+control and treatment sharing the SAME generated questions (vary only the answering). Two arms that
+each re-generate questions are UNPAIRED; their frac delta confounds the mechanism with
+question-sampling variance and cannot be read as a treatment effect. Added to `verdict-rubric.md`.
+Re-open candidate 3 only with (a) a shared-question paired design AND (b) the reach lens forced on —
+but the intent/state finding predicts limited upside.
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it

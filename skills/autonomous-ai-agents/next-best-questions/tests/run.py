@@ -24,6 +24,7 @@ TEST_MODULES = (
     "test_evals",
     "test_eval_families",
     "test_outcome_eval",
+    "test_reach_investigate",
     "test_probe_answerability",
 )
 

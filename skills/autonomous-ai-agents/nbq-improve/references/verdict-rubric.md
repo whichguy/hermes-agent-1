@@ -16,6 +16,13 @@ Apply these rules mechanically to the pre-registered gate.
 - **Proxy-vs-objective gate selection:** Use the OBJECTIVE outcome harness (`outcome_eval.py`-class
   ground truth) for anything touching elicitation or generation. Use the #25-style two-arm realized
   scan for exposure/lens-only changes.
+- **Paired-design validity for answering-side mechanisms:** when the treatment changes how questions
+  are ANSWERED (not generated), the control and treatment arms MUST share the SAME generated question
+  set — vary only the answering. Two arms that each re-generate questions stochastically are UNPAIRED;
+  their pass/frac delta confounds the mechanism with question-sampling variance and cannot be read as
+  a treatment effect. Verify the arms shared questions before trusting a paired Δ (iter-three
+  reach→investigate: 0/14 tasks shared questions, so a +0.100 arm gap was pure sampling noise on top
+  of a mechanism that fired 0 times).
 
 ## Commit-message contract
 

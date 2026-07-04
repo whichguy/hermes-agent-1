@@ -127,8 +127,8 @@ def framing_proceeds(r, se, degenerate):
     return r > 0.0 and abs(r) > se and not degenerate
 
 
-def assemble_stats(data):
-    nbq_rows = [row for row in data.get("rows", []) if row.get("arm") == "nbq"]
+def assemble_stats(data, arm="nbq"):
+    nbq_rows = [row for row in data.get("rows", []) if row.get("arm") == arm]
     per_task = []
     for index, row in enumerate(nbq_rows):
         validate_nbq_row(row, index)
@@ -220,13 +220,14 @@ def format_stats(stats):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default=DEFAULT_INPUT)
+    parser.add_argument("--arm", default="nbq")
     parser.add_argument("--json", dest="json_out")
     args = parser.parse_args(argv)
 
     try:
         with open(args.input, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        stats = assemble_stats(data)
+        stats = assemble_stats(data, arm=args.arm)
         if args.json_out:
             with open(args.json_out, "w", encoding="utf-8") as fh:
                 json.dump(stats, fh, indent=2, sort_keys=True)

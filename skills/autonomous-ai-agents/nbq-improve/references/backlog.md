@@ -12,16 +12,27 @@ This is a living ranked list. Rank by expected value ÷ evaluation cost, highest
    mechanism is pre-registered (the batched strict-simulator answer/refuse probe is designed + parked
    in `next-best-questions/references/prereg-iteration-two.md` item B, unexercised). Full verdict:
    `next-best-questions/references/{evsi-validation-findings.md,design-decisions.md}` §Answerability.
-2. **[NOW TOP for lap three] Build a real answerability corpus — candidate 2 (nbq→relentless
-   integration) or candidate 3 (reach→investigate loop).** #30 is blocked on corpus, not mechanism:
-   the retro probe showed the objective task set is ~universally unanswerable, so it can't test
-   answerability steering. Candidate 3 is especially apt — routing reach questions to a (mocked)
-   investigator that *resolves* some unanswerables into answerables is exactly the contrast #30 needs.
-   Build one of these next; #30 rides on it.
-3. **Retro answerability probe (candidate 1) — DONE 2026-07-04: PARK verdict delivered.** Built
-   `evals/probe_answerability.py` (offline, deterministic, stdlib-only) + 5 unit tests; ran on the
-   pinned objective corpus. Zero new model calls. Product: parked #30 for free and diagnosed *why*
-   (near-universal unanswerability). Kept as a standing instrument. See candidate 1 below.
+2. **Candidate 3 (reach→investigate loop) — CLOSED 2026-07-04 (iteration three): NO ADOPT.** Built an
+   opt-in `nbq-reach-investigate` arm (fixture-aware mock investigator, leakage-guarded). Gate
+   (agentic n=14, deepseek): **0 questions resolved of 42** — nbq's high-EVSI questions are about
+   *intent* (which reading, crash-vs-fallback, detail level), and an investigator observes *state*,
+   not intent. Unanswerable rose (+2.4pts); the +0.100 arm gap was unpaired sampling noise (0/14
+   tasks shared questions). **Finding that reframes the program:** the answerability/reachability
+   lever is a likely dead-end — the value IS in the unobservable intent questions; intent is
+   answerable only by the USER. Full verdict:
+   `next-best-questions/references/{evsi-validation-findings.md,design-decisions.md}` §Reach→investigate.
+3. **[NOW TOP] Candidate 2 — nbq as the Clarifier preflight into `relentless-solve`'s clarify step,
+   where a REAL user answers intent.** The iteration-two/three findings converge here: intent
+   questions can't be made observable, so the only way to test whether ASKING nbq's high-value
+   questions improves outcomes is a loop where a real user (or the planner's clarify oracle) answers
+   them. Primary metric = replan count / journey failed-path count vs unstructured clarify (a
+   workflow-integration change → two-arm, not the objective harness). Needs the relentless harness.
+   This is now the route #30 was waiting on — reframed: not "make questions answerable" but "route
+   intent questions to whoever holds the intent." See candidate 2 below.
+4. **Retro answerability probe (candidate 1) — DONE 2026-07-04: PARK verdict delivered.** Built
+   `evals/probe_answerability.py` (offline, deterministic, stdlib-only; `--arm` added iter 3) + tests;
+   ran on the pinned objective corpus. Zero new model calls. Product: parked #30 for free and
+   diagnosed *why* (near-universal unanswerability). Standing instrument. See candidate 1 below.
 3. **#32 First-order candidate source — CLOSED 2026-07-04: NO ADOPT.** Built, off-by-default
    (`--firstorder`). Gate (n=34, all-deepseek): paired vs nbq Δ+0.049 but 6W/6L (broad-win guard
    fails), unanswerable 77%, a lens-payoff regression, and +16.8% wall (> 10% ceiling). Altitude has

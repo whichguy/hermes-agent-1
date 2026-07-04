@@ -72,6 +72,56 @@ def simulate_user(hidden_spec, question, model, timeout=90):
     return {"question": question, "answer": ans or NO_ANSWER, "revealed": revealed}
 
 
+# ── mocked observable-environment investigator ────────────────────────────────
+
+def _render_fixture(fixture):
+    lines = []
+    for rel in sorted(fixture):
+        spec = fixture[rel]
+        if isinstance(spec, dict):
+            content = spec.get("content", "")
+            age = spec.get("age_days")
+        else:
+            content, age = spec, None
+        lines.append(f"PATH: {rel}")
+        if age is not None:
+            lines.append(f"file age: {age} days old")
+        lines.append("CONTENT:")
+        lines.append(str(content))
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def investigator_prompt(task, question):
+    ambiguity = task.get("ambiguity") or []
+    ambiguity_block = "\n".join(f"- {x}" for x in ambiguity) if ambiguity else "(none listed)"
+    fixture_block = _render_fixture(task.get("fixture") or {}) or "(no observable files)"
+    return (
+        "You are an investigator who can OBSERVE the running environment. Answer the question "
+        "from the spec OR from the observable environment state (files, env vars, config) shown "
+        "below. Do NOT invent anything not present. If the answer is genuinely unobservable, "
+        "reply with exactly:\n"
+        f"{NO_ANSWER}\n"
+        "Reply with the answer only.\n\n"
+        f"PRIVATE SPEC:\n{task['hidden_spec']}\n\n"
+        f"CATEGORY:\n{task.get('category') or '(none)'}\n\n"
+        "AMBIGUITY CONTEXT (not a hint at which reading is correct):\n"
+        f"{ambiguity_block}\n\n"
+        f"OBSERVABLE FIXTURE:\n{fixture_block}\n\n"
+        f"QUESTION: {question}"
+    )
+
+
+def mock_investigator(task, question, model, timeout=90):
+    if not task.get("fixture"):
+        return {"question": question, "answer": NO_ANSWER, "revealed": False}
+    out = pipeline.raw_chat(model, investigator_prompt(task, question),
+                            timeout=timeout, num_predict=150)
+    ans = (out.get("content") or "").strip()
+    revealed = bool(ans) and NO_ANSWER.lower().rstrip(".") not in ans.lower()
+    return {"question": question, "answer": ans or NO_ANSWER, "revealed": revealed}
+
+
 # ── solving + objective scoring ───────────────────────────────────────────────
 
 def solve_prompt(task, qa):
@@ -290,6 +340,8 @@ def run_cell(task, arm, k, models, max_rounds=None):
     qs, meta = [], {}
     if arm == "nbq":
         qs, meta = questions_nbq(task, k, models["skill"], max_rounds=max_rounds)
+    elif arm == "nbq-reach-investigate":
+        qs, meta = questions_nbq(task, k, models["skill"], max_rounds=max_rounds)
     elif arm == "nbq-derive":
         qs, meta = questions_nbq(task, k, models["skill"], auto_derive=True,
                                  max_rounds=max_rounds)
@@ -313,6 +365,14 @@ def run_cell(task, arm, k, models, max_rounds=None):
         raise ValueError(f"unknown arm {arm!r}")
 
     qa = [simulate_user(task["hidden_spec"], q, models["sim"]) for q in qs]
+    if arm == "nbq-reach-investigate":
+        for i, entry in enumerate(qa):
+            if entry["revealed"]:
+                continue
+            investigated = mock_investigator(task, entry["question"], models["sim"])
+            if investigated["revealed"]:
+                investigated["resolved_by"] = "investigator"
+                qa[i] = investigated
     # nbq-derive: tombstoned derivations are established facts the solver should also see
     for d in (meta.get("derived") or []):
         qa.append({"question": d["question"], "answer": d["answer"] + " (derived)",

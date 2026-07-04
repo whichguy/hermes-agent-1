@@ -439,6 +439,24 @@ corpus AND a non-self-rated mechanism (the old self-rated multiplier is still re
 **Methodology banked this lap:** cost is multi-dimensional — `verdict-rubric.md` now requires a
 pre-registered ceiling per axis (wall, tokens, calls), a bust on any one axis vetoing a result win.
 
+## Reach→investigate (candidate 3, mocked) — NO ADOPT + the intent-vs-state finding (iter 3, 2026-07-04)
+
+Tested whether resolving strict-unanswerable questions via a fixture-aware mock investigator (a proxy
+for the reach lens's hop) lifts objective pass. Built an opt-in `nbq-reach-investigate` arm, gated on
+the agentic bank (n=14). **0 questions resolved across all 42 rows** — the mock (validated to work on
+observable questions) had nothing to resolve because **nbq's high-EVSI questions are about intent, not
+observable state**. Unanswerable rose (+2.4pts); the +0.100 arm-mean gap is unpaired
+question-sampling variance (0/14 tasks shared questions across arms), not a treatment effect. **Verdict:
+NO ADOPT / PARK.** Full numbers + verbatim rule: `evsi-validation-findings.md` §Reach→investigate arm.
+
+**The finding that matters (connects #30 + #29 + reach):** an investigator observes STATE; the valuable
+clarifications are about INTENT (what the user wants — crash vs fall-back, which reading, what detail
+level). Intent is unobservable by any vantage or hop — it is answerable only by the user. So the
+answerability/reachability family of levers (#30 weighting, reach→investigate) cannot help the
+questions that matter; it would only demote them. **The value lives in the intent questions precisely
+because they are not derivable/observable.** Route forward: candidate 2 (nbq→relentless), where a real
+user answers intent — not more answerability machinery. #30 and candidate 3 both stay parked.
+
 ## Decided / deferred
 
 - **Decided, keep:** one layer of projected answers (no chain) · within-round semantic consolidation

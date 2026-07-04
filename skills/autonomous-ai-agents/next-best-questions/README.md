@@ -143,6 +143,16 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
 - **Cost is multi-dimensional.** Gate wall, tokens, AND calls each against their own pre-registered
   ceiling; a bust on any one axis vetoes a result win. Don't collapse cost to a single scalar (a
   wall-neutral but token-heavy change, or a hidden extra model call, must not pass on wall alone).
+- **Intent is not state — the valuable questions are unobservable by design.** The high-EVSI
+  clarifications encode user intent (which reading, crash-vs-fallback, what detail level); no vantage,
+  hop, or investigator can observe intent — only the user answers it. This is why every
+  answerability/reachability lever (self-rated multiplier, reach→investigate) has parked: they target
+  observability, but the value is in the *un*observable. Don't build machinery to make intent
+  questions "answerable"; route them to whoever holds the intent (a real user / the planner loop).
+- **Test the answering, hold the questions fixed.** When a change alters how questions are ANSWERED,
+  the control and treatment must share the SAME generated questions. Arms that each re-generate
+  questions are unpaired — a frac delta is question-sampling noise, not the mechanism (iter-three's
+  +0.100 arm gap sat on top of a mechanism that fired 0 times, across 0/14 shared-question tasks).
 
 ## 6. Open, honestly
 
@@ -163,6 +173,16 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
   Re-open only with such a corpus AND a non-self-rated mechanism (the old multiplier was inert at 0.95
   in 15/16 cells). Probe: `evals/probe_answerability.py`; verdict:
   `references/evsi-validation-findings.md` §Answerability retro probe.
+- **Reach→investigate (candidate 3) — NO ADOPT (iteration three, 2026-07-04), and the finding that
+  reframes the whole answerability program.** A mocked investigator resolving strict-unanswerable
+  questions from observable state (spec+fixture) resolved **0 of 42** on the agentic bank: nbq's
+  high-EVSI questions are about **intent** ("which reading?", "crash or fall back?", "what detail
+  level?"), and an investigator observes **state**, not intent. Intent is answerable only by the
+  *user*. So the answerability/reachability lever (#30 weighting, reach→investigate) cannot help the
+  questions that matter — it would only demote them. **The value lives in the intent questions
+  precisely because they are not observable/derivable.** Forward route = candidate 2 (nbq→relentless,
+  where a real user answers intent), not more answerability machinery.
+  (`references/evsi-validation-findings.md` §Reach→investigate arm.)
 - **Prompt distillation**: unblocked by the #32 no-adopt (the value model is not the gap), but
   now lower-priority than #30 — re-scope against whichever answerability mechanism lands.
 - **Discrimination preflight (#33 — built, adopted as an opt-in instrument)**: `--strict-preflight`
