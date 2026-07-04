@@ -112,6 +112,7 @@ FAMILIES = {
     "vantage": "auto",          # "auto" (gate on systems/access prompts) | "on" | "off"
     "premortem": "auto",        # "auto" (gate on failure-surface prompts) | "on" | "off"
     "reach": "auto",            # #29: reachable-other-vantage lens; shares the vantage gate
+    "firstorder": "off",         # #32: naive direct-question candidate source; opt-in only
     "questions_per_family": 3,
     "family_sim": 0.5,          # MMR cross-family diversity penalty (vs 1.0 same-target collapse)
     "families_model": "glm",    # generation model for families + per-family questions
@@ -141,6 +142,9 @@ def _resolve_families(args):
     rc = getattr(args, "reach", None) or os.environ.get("INFOGAIN_REACH")
     if rc not in (None, ""):
         fam["reach"] = str(rc).strip().lower()
+    fo = getattr(args, "firstorder", None) or os.environ.get("INFOGAIN_FIRSTORDER")
+    if fo not in (None, ""):
+        fam["firstorder"] = str(fo).strip().lower()
     fm = getattr(args, "families_model", None) or os.environ.get("INFOGAIN_FAMILIES_MODEL")
     if fm not in (None, ""):
         fam["families_model"] = str(fm).strip()
@@ -171,7 +175,7 @@ def eval_cfg(gen_model=None, pin=PIN_GEN, **overrides):
     return cfg
 
 
-def families_cfg(premortem="auto", families_model=None, reach="auto"):
+def families_cfg(premortem="auto", families_model=None, reach="auto", firstorder="off"):
     """Families block for a harness-built cfg. The eval harnesses call run() directly with
     cfg = dict(DEFAULTS), which has NO 'families' key — so they silently ran the flat generator
     and never exercised the families/lens layer. Harnesses opt in via this helper (and can pin
@@ -179,6 +183,7 @@ def families_cfg(premortem="auto", families_model=None, reach="auto"):
     fam = dict(FAMILIES)
     fam["premortem"] = str(premortem).strip().lower()
     fam["reach"] = str(reach).strip().lower()
+    fam["firstorder"] = str(firstorder).strip().lower()
     if families_model:
         fam["families_model"] = families_model
     return fam
@@ -255,6 +260,7 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
     # MMR using the family-diversity tier (hierarchical_similarity) to spread picks across families.
     fam_cfg = cfg.get("families") or {}
     families_on = bool(fam_cfg.get("enabled"))
+    firstorder_on = str(fam_cfg.get("firstorder", "off")).strip().lower() != "off"
     fam_model = resolve_alias(fam_cfg.get("families_model", cfg["question_gen_model"]))
     fam_sim = float(fam_cfg.get("family_sim", 0.5))
     sim_fn = ((lambda a, b: voi.hierarchical_similarity(a, b, fam_sim)) if families_on
@@ -295,7 +301,7 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
     while rounds_used < rounds_budget:
         rounds_used += 1
         avoid = [r["question"] for r in seen]
-        gen_sink, cons_sink, fq_sink = None, None, None
+        gen_sink, cons_sink, fq_sink, firstorder_sink = None, None, None, None
         if families_on and rounds_used == 1:
             # Round 1 with families: generate families (once), then questions within each.
             log(f"round 1: generating families + per-family questions via {fam_model} ...")
@@ -338,6 +344,12 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
                 cons_sink = [] if trace else None
                 new_qs = pipeline.consolidate_questions(
                     problem, new_qs, cons_model, cfg["gen_timeout"], sink=cons_sink)
+        if firstorder_on and rounds_used == 1:
+            firstorder_sink = [] if trace else None
+            new_qs.extend(pipeline.firstorder_questions(
+                problem, framing, model=fam_model, k=3, timeout=cfg["gen_timeout"],
+                evidence=evidence, sink=firstorder_sink))
+            new_qs = voi.dedupe(new_qs)
         dropped = [q["question"] for q in new_qs if voi.is_duplicate(q, seen)]
         fresh = [q for q in new_qs if not voi.is_duplicate(q, seen)]
         seen.extend(fresh)
@@ -348,6 +360,7 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
                     "round": rounds_used,
                     "generation": (gen_sink[0] if gen_sink else None),
                     "family_questions": fq_sink,
+                    "firstorder_questions": (firstorder_sink[0] if firstorder_sink else None),
                     "consolidation": (cons_sink[0] if cons_sink else None),
                     "dropped_as_duplicate": dropped, "questions": [],
                     "stop_reason": "no new questions"})
@@ -442,6 +455,7 @@ def run(problem, cfg, progress=None, trace=False, evidence=None):
                 "round": rounds_used,
                 "generation": (gen_sink[0] if gen_sink else None),
                 "family_questions": fq_sink,
+                "firstorder_questions": (firstorder_sink[0] if firstorder_sink else None),
                 "consolidation": (cons_sink[0] if cons_sink else None),
                 "dropped_as_duplicate": dropped,
                 "questions": [_trace_question(r) for r in fresh],
@@ -796,6 +810,9 @@ def _dry_run(problem, cfg, evidence=None):
         stages.append("STAGE 1 — generate_questions:\n\n" + pipeline.questions_prompt(
             problem, framing_stub, cfg["questions_per_round"],
             avoid=["<already-considered question>"], evidence=evidence))
+    if str(fam.get("firstorder", "off")).strip().lower() != "off":
+        stages.append("STAGE 1c — firstorder_questions:\n\n" + pipeline.firstorder_prompt(
+            problem, framing_stub, 3, evidence))
     stages.append("STAGE 2 — project_answers (per question, parallel):\n\n"
                   + pipeline.answers_prompt(problem, framing_stub, q_stub["question"],
                                             cfg["answers_per_question"], evidence))
@@ -871,6 +888,10 @@ def build_parser():
                         "unknown into an observable? 'auto' (default — shares the vantage gate) "
                         "| 'on' | 'off'. Only applies when families are on. (Special-cased "
                         "outside the auto-flags.)")
+    p.add_argument("--firstorder", choices=["on", "off"], default=None,
+                   help="First-order candidate source (#32): one naive raw_chat asking the model "
+                        "directly for the K best clarifying questions, tagged lens=firstorder. Off "
+                        "by default. 'on' | 'off'. (Special-cased outside the auto-flags.)")
     p.add_argument("--families-model", default=None,
                    help="Model alias for the families layer (family + per-family question "
                         "generation). Defaults to the FAMILIES constant ('glm'); NOT covered by "

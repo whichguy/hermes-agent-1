@@ -48,6 +48,8 @@ metadata:
 
 # Next-Best-Questions — what to clarify before you start
 
+> See `../nbq-improve/SKILL.md` for the improvement protocol for this skill.
+
 ## Overview
 
 Given an underspecified problem, this skill estimates the **value of information** of clarifying

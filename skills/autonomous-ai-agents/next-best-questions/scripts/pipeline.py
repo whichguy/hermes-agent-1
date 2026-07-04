@@ -58,6 +58,7 @@ import pairwise  # noqa: E402
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434/api/chat")
 OLLAMA_TAGS_URL = OLLAMA_URL.replace("/api/chat", "/api/tags")
 MAX_WORKERS = int(os.environ.get("INFOGAIN_MAX_WORKERS", "8"))
+_NUMBERED_LINE_RE = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*$")
 
 # ── token/time usage accounting (thread-safe; aggregated per run) ─────────────
 _USAGE_LOCK = threading.Lock()
@@ -282,6 +283,21 @@ def questions_prompt(problem, framing, n, avoid=None, evidence=None, family=None
     )
 
 
+def firstorder_prompt(problem, framing, k, evidence=None):
+    return (
+        "Ask the most useful clarifying questions for this task directly.\n\n"
+        f"PROMPT:\n{problem}\n"
+        f"{_evidence_block(evidence, 'resolved — do NOT ask about these again')}"
+        f"\nGOAL: {framing.get('goal', '')}\n"
+        f"RESPONSE TYPE: {framing.get('decision', '')}\n\n"
+        f"Give exactly {k} DISTINCT clarifying questions whose answers would most improve "
+        "the response. Return only a NUMBERED list, one question per line, using this format:\n"
+        "1. <question>\n"
+        "2. <question>\n"
+        "Do not return JSON or any other formatting."
+    )
+
+
 def answers_prompt(problem, framing, question, m, evidence=None):
     return (
         "Project the plausible answers to a clarifying question about a prompt.\n\n"
@@ -361,6 +377,39 @@ def _parse_question_items(obj):
                     "family": (q.get("family") or "").strip(),   # families layer (else "")
                     "lens": (q.get("lens") or "").strip()})
     return out
+
+
+def firstorder_questions(problem, framing, model, k=3, timeout=180, sink=None, evidence=None):
+    """Generate a zero-shot baseline via one naive raw_chat call.
+
+    Returns tagged question records parsed from a plain numbered list. Model and parse
+    failures are represented as an empty list and never raised.
+    """
+    prompt = firstorder_prompt(problem, framing, k, evidence)
+    r = raw_chat(model, prompt, timeout=timeout, temperature=0.0, num_predict=400)
+    if sink is not None:
+        sink.append({"model": model, "prompt": prompt, "raw": r["content"],
+                     "elapsed": r["elapsed"], "attempts": 1, "error": r["error"]})
+    if r["error"]:
+        return []
+    questions = []
+    for line in r["content"].splitlines():
+        match = _NUMBERED_LINE_RE.match(line)
+        if not match:
+            continue
+        text = match.group(1).strip()
+        if text:
+            questions.append({
+                "question": text,
+                "type": "firstorder",
+                "why": "first-order clarifying question",
+                "target": "",
+                "family": "First-order semantics",
+                "lens": "firstorder",
+            })
+        if len(questions) >= k:
+            break
+    return questions
 
 
 def generate_questions(problem, framing, model, n, avoid=None, timeout=180, sink=None,

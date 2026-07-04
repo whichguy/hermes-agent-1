@@ -4,6 +4,7 @@ Evaluation + validation harnesses for the **next-best-questions ranker** (former
 `../references/{benchmark-findings,evsi-validation-findings}.md`. These run on the host against
 `localhost:11434` (immune to container restarts). The end-to-end **wrapper** A/B harness moved with the
 loop into the sibling **`investigator`** skill (`../../investigator/evals/validate_wrapper.py`).
+The loop that drives new eval arms is `../../nbq-improve/SKILL.md`'s seven-step protocol.
 
 | script | what it does | findings |
 |---|---|---|

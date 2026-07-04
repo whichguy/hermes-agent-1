@@ -281,6 +281,36 @@ class TestPipelineMocked(unittest.TestCase):
         self.assertEqual(len(qs), 1)
         self.assertEqual(qs[0]["target"], "t1")
 
+    def test_firstorder_questions_parses_numbered_list_and_tags(self):
+        reply = ("Here are the questions:\n1. Who is the intended audience?\n"
+                 "2) What constraints must the answer satisfy?\n"
+                 "3. What outcome defines success?\n4. This extra item is capped.\nThanks.")
+        sink = []
+        with mock.patch.object(
+                pipeline, "raw_chat",
+                return_value={"content": reply, "error": None, "elapsed": 0.1}):
+            qs = pipeline.firstorder_questions(
+                "p", {"goal": "g", "decision": "d"}, "fast", k=3, sink=sink)
+        self.assertEqual(len(qs), 3)
+        self.assertEqual(qs[0]["question"], "Who is the intended audience?")
+        self.assertTrue(all(q["family"] == "First-order semantics" for q in qs))
+        self.assertTrue(all(q["lens"] == "firstorder" for q in qs))
+        self.assertEqual(sink[0]["raw"], reply)
+        self.assertIsNone(sink[0]["error"])
+
+    def test_firstorder_questions_empty_garbled_and_model_error_return_empty(self):
+        framing = {"goal": "g", "decision": "d"}
+        for response in (
+                {"content": "", "error": None, "elapsed": 0.0},
+                {"content": "Questions without numbered lines", "error": None, "elapsed": 0.0},
+                {"content": "", "error": "model unavailable", "elapsed": 0.0}):
+            sink = []
+            with self.subTest(response=response), \
+                 mock.patch.object(pipeline, "raw_chat", return_value=response):
+                self.assertEqual(
+                    pipeline.firstorder_questions("p", framing, "fast", sink=sink), [])
+            self.assertEqual(sink[0]["error"], response["error"])
+
     # ── families layer ──
     def test_generate_families_parses_and_defaults_lens(self):
         obj = {"families": [{"name": "Scope", "scope": "s", "lens": "scoped"},
@@ -442,6 +472,24 @@ class TestPipelineMocked(unittest.TestCase):
                 {"INFOGAIN_REACH": old})
         self.assertEqual(infogain.families_cfg(reach="on")["reach"], "on")
         self.assertEqual(infogain.families_cfg()["reach"], "auto")
+
+    def test_firstorder_cli_env_and_families_cfg_resolution(self):
+        cfg = infogain.resolve_config(
+            infogain.build_parser().parse_args(["--firstorder", "on", "p"]))
+        self.assertEqual(cfg["families"]["firstorder"], "on")
+        self.assertEqual(infogain.families_cfg(firstorder="on")["firstorder"], "on")
+        self.assertEqual(infogain.families_cfg()["firstorder"], "off")
+        old = os.environ.get("INFOGAIN_FIRSTORDER")
+        try:
+            os.environ["INFOGAIN_FIRSTORDER"] = "on"
+            self.assertEqual(infogain.resolve_config(
+                infogain.build_parser().parse_args(["p"]))["families"]["firstorder"], "on")
+            self.assertEqual(infogain.resolve_config(
+                infogain.build_parser().parse_args(["--firstorder", "off", "p"]))
+                ["families"]["firstorder"], "off")
+        finally:
+            os.environ.pop("INFOGAIN_FIRSTORDER", None) if old is None else os.environ.update(
+                {"INFOGAIN_FIRSTORDER": old})
 
     def test_generate_families_premortem_auto_gate(self):
         obj = {"families": [{"name": "Hazards", "scope": "s", "lens": "premortem"}]}
@@ -759,6 +807,66 @@ class TestOrchestrationMocked(unittest.TestCase):
             result = infogain.run("task", cfg)
         self.assertTrue(flat.called)        # flat fallback fired
         self.assertTrue(result["bucket"])   # NOT empty (the bug would give an empty bucket)
+
+    def test_firstorder_candidates_merge_into_round_one(self):
+        cfg = self._cfg(max_rounds=1, target_bucket_size=2, min_bucket_size=1,
+                        families={"enabled": False, "firstorder": "on",
+                                  "families_model": "fast"})
+        firstorder = self._fake_round(1, base_target="first")
+        firstorder[0].update(target="", family="First-order semantics", lens="firstorder",
+                             type="firstorder", why="first-order clarifying question",
+                             question="What should the response optimize for?")
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d",
+                                              "success_criteria": [], "baseline_plan": "p"}, None)), \
+             mock.patch.object(pipeline, "generate_questions",
+                               return_value=(self._fake_round(2), None)), \
+             mock.patch.object(pipeline, "firstorder_questions", return_value=firstorder) as fo, \
+             mock.patch.object(pipeline, "project_answers_batch",
+                               side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch",
+                               side_effect=lambda p, f, b, recs, *a, **k: recs):
+            result = infogain.run("task", cfg)
+        self.assertTrue(fo.called)
+        self.assertTrue(any(r.get("lens") == "firstorder" for r in result["all_scored"]))
+
+    def test_default_cfg_never_calls_firstorder_or_emits_its_lens(self):
+        cfg = dict(infogain.DEFAULTS)
+        cfg.update(max_rounds=1, target_bucket_size=1, min_bucket_size=1)
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d",
+                                              "success_criteria": [], "baseline_plan": "p"}, None)), \
+             mock.patch.object(pipeline, "generate_questions",
+                               return_value=(self._fake_round(2), None)), \
+             mock.patch.object(pipeline, "firstorder_questions") as fo, \
+             mock.patch.object(pipeline, "project_answers_batch",
+                               side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch",
+                               side_effect=lambda p, f, b, recs, *a, **k: recs):
+            result = infogain.run("task", cfg)
+        self.assertFalse(fo.called)
+        self.assertFalse(any(r.get("lens") == "firstorder" for r in result["all_scored"]))
+
+    def test_firstorder_merge_dedupes_existing_question(self):
+        cfg = self._cfg(max_rounds=1, target_bucket_size=1, min_bucket_size=1,
+                        families={"enabled": False, "firstorder": "on",
+                                  "families_model": "fast"})
+        flat = self._fake_round(2)
+        overlap = dict(flat[0])
+        overlap.update(target="", family="First-order semantics", lens="firstorder",
+                       type="firstorder", why="first-order clarifying question")
+        with mock.patch.object(pipeline, "frame_and_plan",
+                               return_value=({"goal": "g", "decision": "d",
+                                              "success_criteria": [], "baseline_plan": "p"}, None)), \
+             mock.patch.object(pipeline, "generate_questions", return_value=(flat, None)), \
+             mock.patch.object(pipeline, "firstorder_questions", return_value=[overlap]), \
+             mock.patch.object(pipeline, "project_answers_batch",
+                               side_effect=lambda p, f, recs, *a, **k: recs), \
+             mock.patch.object(pipeline, "judge_plan_change_batch",
+                               side_effect=lambda p, f, b, recs, *a, **k: recs):
+            result = infogain.run("task", cfg)
+        self.assertEqual(sum(r["question"] == flat[0]["question"]
+                             for r in result["all_scored"]), 1)
 
     def test_loop_stops_at_target_in_one_round(self):
         cfg = self._cfg(question_gen_model="fast", answer_model="fast",
@@ -1525,6 +1633,16 @@ class TestCliAndDryRun(unittest.TestCase):
         self.assertNotIn("STAGE 3b", out_off)
         self.assertNotIn("STAGE 1a", out_off)
         self.assertIn("STAGE 1 —", out_off)                    # flat generator prompt instead
+
+    def test_dry_run_includes_firstorder_stage_when_enabled(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = infogain.main(["a problem", "--dry-run", "--firstorder", "on"])
+        self.assertEqual(rc, 0)
+        self.assertIn("STAGE 1c — firstorder_questions", buf.getvalue())
+        self.assertIn("NUMBERED list", buf.getvalue())
 
     def test_breadth_consolidation_branch_runs(self):
         # the only run() branch previously uncovered: gen_samples>1 routes candidates

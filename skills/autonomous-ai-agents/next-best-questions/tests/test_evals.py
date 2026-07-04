@@ -447,6 +447,33 @@ class TestPreflight(unittest.TestCase):
                                return_value={"content": "OK", "elapsed": 0.1, "error": None}):
             validate_evsi.preflight_model("fast", "judge")  # must not raise
 
+    def test_discrimination_fixed_choice_fails(self):
+        with mock.patch.object(validate_evsi.pipeline, "raw_chat",
+                               return_value={"content": "A", "elapsed": 0.1, "error": None}):
+            with self.assertRaises(SystemExit) as ctx:
+                validate_evsi.discrimination_preflight("random", "judge")
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_discrimination_oracle_passes(self):
+        def oracle(model, prompt, timeout, num_predict):
+            fixture = next(f for f in validate_evsi._DISCRIMINATION_FIXTURES
+                           if f["q"] in prompt)
+            return {"content": fixture["better"], "elapsed": 0.1, "error": None}
+
+        with mock.patch.object(validate_evsi.pipeline, "raw_chat", side_effect=oracle):
+            score = validate_evsi.discrimination_preflight("oracle", "judge")
+        self.assertEqual(score, 8)
+
+    def test_discrimination_fixtures_well_formed(self):
+        fixtures = validate_evsi._DISCRIMINATION_FIXTURES
+        self.assertEqual(len(fixtures), 8)
+        for fixture in fixtures:
+            self.assertIsInstance(fixture["A"], str)
+            self.assertIsInstance(fixture["B"], str)
+            self.assertNotEqual(fixture["A"], fixture["B"])
+            self.assertIn(fixture["better"], {"A", "B"})
+        self.assertEqual({fixture["better"] for fixture in fixtures}, {"A", "B"})
+
 
 @unittest.skipUnless(_OK, "skill scripts not importable")
 class TestAbProbs(unittest.TestCase):

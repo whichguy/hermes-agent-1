@@ -253,6 +253,97 @@ def fetch_with_retry(fn):
                 raise
             time.sleep(0.01 * (2 ** attempt))
 """,
+    "atomic-publish": """import os, tempfile
+def publish():
+    text = open('draft.txt').read()
+    normalized = '\\n'.join(line.rstrip(' \\t') for line in text.splitlines()) + '\\n'
+    os.makedirs('live', exist_ok=True)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir='live',
+                                         prefix='.message.', delete=False) as fh:
+            tmp = fh.name
+            fh.write(normalized)
+        os.replace(tmp, 'live/message.txt')
+        tmp = None
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+
+if __name__ == '__main__':
+    publish()
+""",
+    "roster-dedupe": """import os
+os.makedirs('out', exist_ok=True)
+seen = set()
+kept = []
+for raw in open('roster.txt'):
+    address = raw.strip()
+    if address and address.casefold() not in seen:
+        seen.add(address.casefold())
+        kept.append(address)
+with open('out/roster.txt', 'w') as fh:
+    for address in kept:
+        fh.write(address + '\\n')
+""",
+    "asset-prune": """import os, sys
+apply = sys.argv[1:] == ['--apply']
+if sys.argv[1:] and not apply:
+    print('usage: solution.py [--apply]', file=sys.stderr)
+    sys.exit(2)
+listed = {line.strip() for line in open('manifest.txt') if line.strip()}
+candidates = []
+for root, dirs, files in os.walk('assets'):
+    for name in files:
+        path = os.path.join(root, name)
+        rel = os.path.relpath(path, 'assets')
+        if rel not in listed:
+            candidates.append((rel, path))
+for rel, path in sorted(candidates):
+    if apply:
+        os.remove(path)
+        print(f'deleted: {rel}')
+    else:
+        print(f'would delete: {rel}')
+""",
+    "event-time-normalize": """import datetime, json
+events = json.load(open('events.json'))
+utc = datetime.timezone.utc
+for event in events:
+    value = event['at']
+    dt = datetime.datetime.fromisoformat(value[:-1] + '+00:00' if value.endswith('Z') else value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=utc)
+    event['at'] = dt.astimezone(utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+with open('normalized.json', 'w') as fh:
+    json.dump(events, fh)
+""",
+    "fee-ledger": """import decimal, json, os
+existing = []
+if os.path.exists('ledger.jsonl'):
+    existing = [json.loads(line) for line in open('ledger.jsonl') if line.strip()]
+seen = {entry['order_id'] for entry in existing}
+with open('ledger.jsonl', 'a') as fh:
+    for order in json.load(open('orders.json')):
+        if order.get('paid') and order['id'] not in seen:
+            fee = (decimal.Decimal(order['amount_cents']) * decimal.Decimal('0.10')).quantize(
+                decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
+            fh.write(json.dumps({'order_id': order['id'], 'fee_cents': int(fee)}) + '\\n')
+            seen.add(order['id'])
+""",
+    "deploy-target": """import argparse, json, os, sys
+parser = argparse.ArgumentParser()
+parser.add_argument('--target')
+args = parser.parse_args()
+target = (args.target or '').strip() or os.environ.get('DEPLOY_TARGET', '').strip()
+if not target and os.path.exists('deploy.json'):
+    value = json.load(open('deploy.json')).get('target')
+    target = value.strip() if isinstance(value, str) else ''
+if not target:
+    print('no deployment target configured', file=sys.stderr)
+    sys.exit(2)
+print(target)
+""",
 }
 
 # one plausible MISREADING per task — the ambiguity must be real (checks must fail)
@@ -281,6 +372,51 @@ json.dump(recs, open('records.json', 'w'))   # no backup
             if attempt == 2:
                 raise
 """,
+    "atomic-publish": """import os
+def publish():
+    text = open('draft.txt').read()
+    normalized = '\\n'.join(line.rstrip(' \\t') for line in text.splitlines()) + '\\n'
+    os.makedirs('live', exist_ok=True)
+    with open('live/message.txt', 'w') as fh:  # direct, tear-prone overwrite
+        fh.write(normalized)
+if __name__ == '__main__':
+    publish()
+""",
+    "roster-dedupe": """import os
+os.makedirs('out', exist_ok=True)
+addresses = sorted({line.strip() for line in open('roster.txt') if line.strip()})
+open('out/roster.txt', 'w').write('\\n'.join(addresses) + '\\n')
+""",
+    "asset-prune": """import os
+listed = {line.strip() for line in open('manifest.txt') if line.strip()}
+for root, dirs, files in os.walk('assets'):
+    for name in files:
+        path = os.path.join(root, name)
+        rel = os.path.relpath(path, 'assets')
+        if rel not in listed:
+            os.remove(path)  # applies immediately, even without --apply
+            print(f'deleted: {rel}')
+""",
+    "event-time-normalize": """import datetime, json
+events = json.load(open('events.json'))
+for event in events:
+    value = event['at']
+    dt = datetime.datetime.fromisoformat(value[:-1] + '+00:00' if value.endswith('Z') else value)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc)
+    event['at'] = dt.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+json.dump(events, open('normalized.json', 'w'))  # naive values stay naive, without Z
+""",
+    "fee-ledger": """import json
+with open('ledger.jsonl', 'a') as fh:
+    for order in json.load(open('orders.json')):
+        if order.get('paid'):
+            fh.write(json.dumps({'order_id': order['id'],
+                                 'fee_cents': round(order['amount_cents'] * 0.1)}) + '\\n')
+""",
+    "deploy-target": """import json
+print(json.load(open('deploy.json'))['target'])  # file always wins
+""",
 }
 
 
@@ -289,11 +425,19 @@ class TestAgenticTier(unittest.TestCase):
     def test_schema(self):
         for t in outcome_bank.AGENTIC:
             self.assertEqual(t["kind"], "script", t["id"])
-            for key in ("id", "ambiguous_prompt", "hidden_spec", "checks", "ambiguity"):
+            for key in ("id", "kind", "category", "ambiguous_prompt", "hidden_spec",
+                        "checks", "ambiguity"):
                 self.assertIn(key, t, t["id"])
+                self.assertTrue(t[key], f"{t['id']}: empty {key}")
             self.assertGreaterEqual(len(t["ambiguity"]), 2, t["id"])
             self.assertGreaterEqual(len(t["checks"]), 2, t["id"])
+            self.assertNotIn(t["hidden_spec"], t["ambiguous_prompt"], t["id"])
         self.assertEqual(len(outcome_bank.AGENTIC), len(_AGENTIC_REF))
+
+    def test_bank_integrity(self):
+        self.assertEqual(len(outcome_bank.AGENTIC), 14)
+        self.assertEqual(len(outcome_bank.BY_ID),
+                         len(outcome_bank.TASKS) + len(outcome_bank.AGENTIC))
 
     def test_reference_solutions_pass_all_checks(self):
         for t in outcome_bank.AGENTIC:
@@ -356,6 +500,75 @@ class TestAnalysis(unittest.TestCase):
     def test_sign_test_exact(self):
         self.assertAlmostEqual(outcome_eval._sign_test_p(5, 0), 0.0625, places=4)
         self.assertEqual(outcome_eval._sign_test_p(0, 0), 1.0)
+
+
+@unittest.skipUnless(_OK, "skill scripts not importable")
+class TestOutcomeCostInstrumentation(unittest.TestCase):
+    @staticmethod
+    def _row(task, arm, elapsed_s, usage=None):
+        meta = {} if usage is None else {"usage": usage}
+        return {"task": task, "arm": arm, "qa": [], "unanswerable": 0,
+                "frac": 0.5 if arm == "baseline" else 0.75,
+                "meta": meta, "elapsed_s": elapsed_s}
+
+    def test_analyze_reports_cost_columns(self):
+        rows = [
+            self._row("t1", "baseline", 1.0),
+            self._row("t1", "nbq", 4.0,
+                      {"calls": 1, "input_tokens": 100, "output_tokens": 20,
+                       "elapsed": 3.0}),
+            self._row("t2", "baseline", 2.0),
+            self._row("t2", "nbq", 6.0,
+                      {"calls": 3, "input_tokens": 200, "output_tokens": 40,
+                       "elapsed": 5.0}),
+        ]
+        stats = outcome_eval.analyze(rows)["arms"]["nbq"]
+        self.assertEqual(stats["mean_elapsed_s"], 5.0)
+        self.assertEqual(stats["mean_tokens"], 180.0)
+        self.assertEqual(stats["mean_calls"], 2.0)
+
+    def test_analyze_missing_usage_reports_none(self):
+        rows = [self._row("t1", "baseline", 1.0),
+                self._row("t1", "zeroshot", 2.5)]
+        stats = outcome_eval.analyze(rows)["arms"]["zeroshot"]
+        self.assertEqual(stats["mean_elapsed_s"], 2.5)
+        self.assertIsNone(stats["mean_tokens"])
+        self.assertIsNone(stats["mean_calls"])
+
+    def test_single_call_question_arms_report_usage(self):
+        task = outcome_bank.TASKS[0]
+        response = {"content": "1. Which order?", "input_tokens": 11,
+                    "output_tokens": 4, "elapsed": 1.25, "error": None}
+        with mock.patch.object(pipeline, "raw_chat", return_value=response):
+            for question_fn in (outcome_eval.questions_zeroshot,
+                                outcome_eval.questions_prompt_evsi):
+                _, meta = question_fn(task, 1, "m")
+                self.assertEqual(meta["usage"], {"calls": 1, "input_tokens": 11,
+                                                  "output_tokens": 4,
+                                                  "elapsed": 1.25})
+
+
+@unittest.skipUnless(_OK, "skill scripts not importable")
+class TestFirstOrderArms(unittest.TestCase):
+    def test_firstorder_arms_dispatch_with_expected_options(self):
+        task = outcome_bank.TASKS[0]
+        models = {"skill": "skill", "solver": "solver", "sim": "sim"}
+        solved = {"code": "", "frac": 1.0, "per_test": []}
+        with mock.patch.object(outcome_eval, "questions_nbq", return_value=(["q"], {})) as nbq, \
+             mock.patch.object(outcome_eval, "simulate_user",
+                               return_value={"question": "q", "answer": "a",
+                                             "revealed": True}), \
+             mock.patch.object(outcome_eval, "solve_and_score", return_value=solved):
+            row = outcome_eval.run_cell(task, "nbq-firstorder", 2, models,
+                                        max_rounds=4)
+            self.assertEqual(row["arm"], "nbq-firstorder")
+            nbq.assert_called_with(task, 2, "skill", max_rounds=4, firstorder=True)
+
+            row = outcome_eval.run_cell(task, "nbq-firstorder-behavior", 2, models,
+                                        max_rounds=4)
+            self.assertEqual(row["arm"], "nbq-firstorder-behavior")
+            nbq.assert_called_with(task, 2, "skill", max_rounds=4,
+                                   judge_mode="behavior", firstorder=True)
 
 
 if __name__ == "__main__":

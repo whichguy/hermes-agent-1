@@ -40,7 +40,7 @@ sys.path.insert(0, _HERE)
 import infogain  # noqa: E402
 import pipeline  # noqa: E402
 import outcome_bank  # noqa: E402
-from validate_evsi import preflight_model  # noqa: E402
+from validate_evsi import preflight_model, discrimination_preflight  # noqa: E402
 from analyze_evsi import spearman  # noqa: E402
 
 NO_ANSWER = "The spec doesn't say."
@@ -210,9 +210,11 @@ def solve_and_score(task, qa, solver_model, timeout=240):
 
 # ── question sources (the arms' only difference) ─────────────────────────────
 
-def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judge_mode=None):
+def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judge_mode=None,
+                  firstorder=False):
     cfg = infogain.eval_cfg(skill_model, pin=infogain.PIN_ALL)
-    cfg["families"] = infogain.families_cfg(families_model=skill_model)
+    cfg["families"] = infogain.families_cfg(
+        families_model=skill_model, firstorder=("on" if firstorder else "off"))
     if max_rounds:
         cfg["max_rounds"] = max_rounds
     if auto_derive:
@@ -243,7 +245,12 @@ def zeroshot_prompt(task, k):
 
 def questions_zeroshot(task, k, model, timeout=120):
     out = pipeline.raw_chat(model, zeroshot_prompt(task, k), timeout=timeout, num_predict=400)
-    return _parse_numbered(out.get("content"), k), {"raw": out.get("content", "")}
+    meta = {"raw": out.get("content", ""),
+            "usage": {"calls": 1,
+                      "input_tokens": out.get("input_tokens", 0),
+                      "output_tokens": out.get("output_tokens", 0),
+                      "elapsed": out.get("elapsed", 0.0)}}
+    return _parse_numbered(out.get("content"), k), meta
 
 
 def questions_prompt_evsi(task, k, model, timeout=180):
@@ -268,7 +275,12 @@ def questions_prompt_evsi(task, k, model, timeout=180):
         f"Output ONLY your top {k} questions by weight, numbered 1..{k}."
     )
     out = pipeline.raw_chat(model, p, timeout=timeout, num_predict=700)
-    return _parse_numbered(out.get("content"), k), {"raw": out.get("content", "")}
+    meta = {"raw": out.get("content", ""),
+            "usage": {"calls": 1,
+                      "input_tokens": out.get("input_tokens", 0),
+                      "output_tokens": out.get("output_tokens", 0),
+                      "elapsed": out.get("elapsed", 0.0)}}
+    return _parse_numbered(out.get("content"), k), meta
 
 
 # ── one task × one arm ───────────────────────────────────────────────────────
@@ -287,6 +299,12 @@ def run_cell(task, arm, k, models, max_rounds=None):
     elif arm == "nbq-derive-behavior":
         qs, meta = questions_nbq(task, k, models["skill"], auto_derive=True,
                                  max_rounds=max_rounds, judge_mode="behavior")
+    elif arm == "nbq-firstorder":
+        qs, meta = questions_nbq(task, k, models["skill"], max_rounds=max_rounds,
+                                 firstorder=True)
+    elif arm == "nbq-firstorder-behavior":
+        qs, meta = questions_nbq(task, k, models["skill"], max_rounds=max_rounds,
+                                 judge_mode="behavior", firstorder=True)
     elif arm == "zeroshot":
         qs, meta = questions_zeroshot(task, k, models["skill"])
     elif arm == "prompt-evsi":
@@ -340,6 +358,8 @@ def analyze(rows):
         deltas = [cells[t]["frac"] - base[t]["frac"] for t in shared]
         wins = sum(1 for d in deltas if d > 0)
         losses = sum(1 for d in deltas if d < 0)
+        usage = [cells[t]["meta"].get("usage") for t in shared
+                 if cells[t]["meta"].get("usage")]
         stats = {
             "n": len(shared),
             "mean_frac": round(statistics.mean(cells[t]["frac"] for t in shared), 3) if shared else None,
@@ -349,12 +369,22 @@ def analyze(rows):
             "sign_p": round(_sign_test_p(wins, losses), 4),
             "unanswerable_rate": round(sum(cells[t]["unanswerable"] for t in shared)
                                        / max(1, sum(len(cells[t]["qa"]) for t in shared)), 3),
+            "mean_elapsed_s": round(statistics.mean(cells[t]["elapsed_s"] for t in shared), 1)
+            if shared else None,
+            "mean_tokens": round(statistics.mean(
+                u.get("input_tokens", 0) + u.get("output_tokens", 0) for u in usage), 1)
+            if usage else None,
+            "mean_calls": round(statistics.mean(u.get("calls", 0) for u in usage), 1)
+            if usage else None,
         }
         out["arms"][arm] = stats
         lines.append(f"  {arm:12} pass {stats['mean_frac']} vs baseline "
                      f"{stats['baseline_mean_frac']}  Δ {stats['mean_delta']:+.3f}  "
                      f"wins {wins}/{len(deltas)} (losses {losses}, p={stats['sign_p']})  "
-                     f"unanswerable {stats['unanswerable_rate']:.0%}")
+                     f"unanswerable {stats['unanswerable_rate']:.0%}  "
+                     f"wall {stats['mean_elapsed_s']}s  "
+                     f"tok {stats['mean_tokens'] if stats['mean_tokens'] is not None else '—'}  "
+                     f"calls {stats['mean_calls'] if stats['mean_calls'] is not None else '—'}")
     # P6 anchor: does the skill's own value score predict objective benefit?
     nbq = by.get("nbq", {})
     shared = sorted(set(nbq) & set(base))
@@ -383,6 +413,8 @@ def main(argv=None):
     ap.add_argument("--solver-model", default="deepseek")
     ap.add_argument("--sim-model", default="deepseek")
     ap.add_argument("--max-rounds", type=int, default=None, help="cap the skill's rounds")
+    ap.add_argument("--strict-preflight", action="store_true",
+                    help="run 8 forced-choice calls per model (off by default)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
@@ -403,6 +435,9 @@ def main(argv=None):
               "sim": pipeline.resolve_alias(args.sim_model)}
     for role, m in models.items():
         preflight_model(m, role)
+    if args.strict_preflight:
+        for role, m in models.items():
+            discrimination_preflight(m, role)
 
     rows, t0 = [], time.time()
     for task in tasks:

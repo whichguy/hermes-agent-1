@@ -124,6 +124,14 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
   one run than three literature-motivated upgrades did — always include the cheapest competitor.
 - **Test derivability-like self-reports by making the model perform them** (CLAMBER generalized:
   LLMs are unreliable self-judges — of ambiguity, of derivability, and of when to clarify).
+- **A passing test does not prove its target branch ran.** Coverage/execution and assertion are
+  different: dead code wired into a live path still needs a test that actually exercises that
+  branch. Otherwise the test is misleading even while green.
+- **`trace --count` without `--missing` is a tautology.** It reports every executed line while
+  hiding every gap; pass `--missing` or a claimed "100% coverage" can be an illusion.
+- **Archive honestly instead of theater-testing.** CLI/print drivers whose findings are already
+  recorded are deliberately left untested, while their pure math helpers remain pinned. Do not add
+  tests solely to inflate a coverage number.
 
 ## 6. Open, honestly
 
@@ -137,6 +145,13 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
   realized judge; a discrimination preflight (a judge that answers but judges randomly still
   passes today's preflight).
 
+## 7. The standing improvement protocol
+
+The documented self-improvement loop lives at
+`skills/autonomous-ai-agents/nbq-improve/SKILL.md`: REVIEW → RESEARCH → PLAN → BUILD → EVALUATE →
+JOURNAL → LOOP. Every future iteration is cost-aware: it measures Δtokens and Δwall alongside
+Δresult, not result alone.
+
 ## Where everything lives
 
 | doc | contents |
@@ -148,3 +163,4 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
 | `references/algorithm-review-2026-07.md` | the literature survey and its outcome |
 | `references/assertion-audit-2026-07.md` | the adversarial audit (deepseek-v4-pro) verbatim |
 | `evals/README.md` | the harness suite, headline results, run recipes |
+| `../nbq-improve/SKILL.md` | the standing, cost-aware improvement protocol |

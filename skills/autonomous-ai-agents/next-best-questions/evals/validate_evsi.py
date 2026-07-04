@@ -23,6 +23,7 @@ Run on the host (immune to hermes container restarts), incremental writes:
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -43,6 +44,42 @@ import testbank  # noqa: E402
 PROMPTS = testbank.ALL
 
 
+_DISCRIMINATION_FIXTURES = (
+    {"q": "Sort these timestamps from earliest to latest.",
+     "A": "Sort them in ascending order.",
+     "B": "Sort them in descending order.",
+     "better": "A", "contrast": "one-token-flip"},
+    {"q": "Remove a message from the active inbox but preserve it for recovery.",
+     "A": "Delete the message.",
+     "B": "Archive the message.",
+     "better": "B", "contrast": "one-token-flip"},
+    {"q": "Select every score that is at least 80.",
+     "A": "Use the condition score >= 80.",
+     "B": "Use the condition score > 80.",
+     "better": "A", "contrast": "one-token-flip"},
+    {"q": "Deduplicate records by ID while retaining the most recent record.",
+     "A": "For each ID, keep the oldest record.",
+     "B": "For each ID, keep the newest record.",
+     "better": "B", "contrast": "one-token-flip"},
+    {"q": "How should a client retry a temporarily unavailable API request?",
+     "A": "Retry with capped exponential backoff and jitter, honoring Retry-After.",
+     "B": "It may help to retry later with some delay.",
+     "better": "A", "contrast": "cosmetic-rewording"},
+    {"q": "How should user input be included safely in a SQL query?",
+     "A": "Try to clean the input before adding it to the query.",
+     "B": "Use a parameterized query and bind the input as a value.",
+     "better": "B", "contrast": "cosmetic-rewording"},
+    {"q": "What is the first step when a production host may be compromised?",
+     "A": "Isolate the host from the network while preserving volatile evidence.",
+     "B": "Look into the host carefully before deciding what to do.",
+     "better": "A", "contrast": "cosmetic-rewording"},
+    {"q": "When should an updated database record's cache entry be invalidated?",
+     "A": "Refresh or clear the cache when it seems appropriate.",
+     "B": "Invalidate the record's cache key immediately after the transaction commits.",
+     "better": "B", "contrast": "cosmetic-rewording"},
+)
+
+
 def preflight_model(model, role, timeout=60):
     """Fail fast if a model can't serve eval duty. Reasoning-channel models (e.g. gpt-oss:20b)
     return an empty message.content via raw_chat, which silently nulls every judged value — the
@@ -55,6 +92,38 @@ def preflight_model(model, role, timeout=60):
               "raw_chat — every judged value would be null. Pin a plain-content model "
               "(e.g. --judge-model fast).", file=sys.stderr)
         sys.exit(2)
+
+
+def discrimination_preflight(model, role, timeout=60):
+    """Verify that a serving model can distinguish objectively better from worse answers."""
+    score = 0
+    for fixture in _DISCRIMINATION_FIXTURES:
+        prompt = ("Choose the better answer to the question. Return only A or B.\n\n"
+                  f"QUESTION: {fixture['q']}\n"
+                  f"A: {fixture['A']}\n"
+                  f"B: {fixture['B']}")
+        out = pipeline.raw_chat(model, prompt, timeout=timeout, num_predict=16)
+        raw_content = out.get("content") if isinstance(out, dict) else ""
+        content = raw_content.strip() if isinstance(raw_content, str) else ""
+        choice = None
+        forced = re.fullmatch(r"(?:answer\s*:?\s*)?([AB12])[.)]?", content,
+                              flags=re.IGNORECASE)
+        if forced:
+            choice = {"A": "A", "B": "B", "1": "A", "2": "B"}[forced.group(1).upper()]
+        else:
+            for candidate in ("A", "B"):
+                if content.casefold() == fixture[candidate].strip().casefold():
+                    choice = candidate
+                    break
+        if choice == fixture["better"]:
+            score += 1
+
+    if score < 6:
+        print(f"discrimination_preflight: {role} model {model!r} scored {score}/8 (<6) — "
+              "it answers but cannot reliably tell better from worse; every realized-value "
+              "judgment would be noise.", file=sys.stderr)
+        sys.exit(2)
+    return score
 
 
 def change_judge(prompt, baseline, new, model, timeout):
@@ -287,6 +356,9 @@ def main(argv=None):
                    help="use the anchored mid-scale change judge (de-saturated instrument). NOT "
                         "comparable with prior runs' realized_change — A/B via evals/rejudge.py "
                         "before adopting.")
+    p.add_argument("--strict-preflight", action="store_true",
+                   help="run discrimination_preflight (8 forced-choice calls per model) in "
+                        "addition to the emptiness preflight; costs 8 calls each, default off.")
     p.add_argument("--timeout", type=int, default=180)
     args = p.parse_args(argv)
     if sum((args.ab, args.ab_probs, args.ab_solution)) > 1:
@@ -311,7 +383,11 @@ def main(argv=None):
                                                 reach=args.reach)
     judge_model = pipeline.resolve_alias(args.judge_model)  # alias -> real model name
     preflight_model(judge_model, "judge")
-    preflight_model(pipeline.resolve_alias(cfg["value_judge_model"]), "elicit")
+    elicit_model = pipeline.resolve_alias(cfg["value_judge_model"])
+    preflight_model(elicit_model, "elicit")
+    if args.strict_preflight:
+        discrimination_preflight(judge_model, "judge")
+        discrimination_preflight(elicit_model, "elicit")
 
     prompts = [x for x in PROMPTS if not args.prompt_ids or x["id"] in args.prompt_ids]
     rows, t0 = [], time.time()
