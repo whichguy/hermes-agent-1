@@ -11,7 +11,7 @@ description: >
   and just do it", "investigate and answer", "resolve the unknowns then respond", "refine this prompt",
   "improve my prompt", "whittle down the unknowns and give me a better prompt", "triage the unknowns",
   "research what you can, judge the rest".
-version: 1.2.0
+version: 1.2.1
 author: agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -202,6 +202,10 @@ decisions rather than discovered facts.
 defaults to `prompt` on the CLI (the human prompt-refinement entry point); the programmatic
 config-key defaults are `off` / `response` — a caller that doesn't pass `triage`/`output` (e.g.
 relentless-solve today) sees behavior identical to 1.1.0 until it opts in.
+
+**Flag defaults** — `batch_judge` is on by default because it was a measured performance win
+with accept/reject parity confirmed against per-call judging. `parallel_round` and `dirty_rank`
+remain opt-in and off by default.
 
 ## Output modes (`--output`)
 

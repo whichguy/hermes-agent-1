@@ -41,6 +41,8 @@ Depends on the next-best-questions ranker (resolved via INFOGAIN_SCRIPTS_DIR / H
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 import sys
@@ -73,8 +75,8 @@ except ImportError as _ie:  # graceful: import-safe without it; rank() raises in
 # working against this module.
 from answerer import (  # noqa: E402
     _ASK_ERR, _HAVE_ASK, _extract, _strip_suggestion, dispatch_single, fp,
-    grounded_answer, judgment_call, qtext_of, read_answer_artifact, refine_prompt, resolve_alias,
-    respond, triage_batch,
+    grounded_answer, judgment_batch, judgment_call, qtext_of, read_answer_artifact, refine_prompt,
+    resolve_alias, respond, triage_batch,
 )
 
 # Capability ladder. DEFAULT = act (full agency, unattended) — today's behavior. The other levels
@@ -95,9 +97,15 @@ CAPABILITIES = {
                           "action, reply NOT_FOUND: needs <action> (capability restricted)."},
 }
 
+# Measured default choices for 1.2.1: batch_judge is on because the judge stage
+# improved from 25.5s to 9.1s with proven-identical accept/reject parity against
+# per-call judging. parallel_round and dirty_rank remain opt-in after narrow to
+# no measured benefit. responder_model stays glm because tier right-sizing did
+# not help: the faster tier also timed out at 300s on hard problems.
 DEFAULTS = {
     "k": 6, "max_rounds": 3, "floor": 0.12, "key_gap_threshold": 0.40,
-    "output": "response", "stakes_aware_respond": False,
+    "output": "response", "stakes_aware_respond": False, "parallel_round": False,
+    "batch_judge": True, "dirty_rank": False,
     "triage": False, "triage_model": "fast", "triage_provider": "ollama-glm",
     "triage_timeout": 60, "judge_model": "deepseek", "judge_provider": "ollama-glm",
     "judge_timeout": 120, "max_assumes": 6,
@@ -201,7 +209,37 @@ def rank(problem, evidence, rank_cfg):
     return ranked
 
 
-def _tombstone(q, found, text, via="research", rationale=None):
+def _stable_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _evidence_fingerprint(evidence):
+    payload = json.dumps(list(evidence), ensure_ascii=False, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _rank_cached(problem, evidence, rank_cfg, cfg):
+    """Optional one-entry dirty-bit cache for rank(), scoped by the caller's cfg memo."""
+    if not cfg.get("dirty_rank"):
+        return rank(problem, evidence, rank_cfg)
+
+    # cfg is rebuilt for each public call; sharing requires an explicit caller-provided memo.
+    memo = cfg.get("_dirty_rank_memo")
+    if not isinstance(memo, dict):
+        memo = {}
+        cfg["_dirty_rank_memo"] = memo
+
+    key = (_stable_json(problem), _stable_json(rank_cfg), _evidence_fingerprint(evidence))
+    if memo.get("key") == key:
+        return memo["ranked"]
+
+    ranked = rank(problem, evidence, rank_cfg)
+    memo["key"] = key
+    memo["ranked"] = ranked
+    return ranked
+
+
+def _tombstone(q, found, text, via="research", rationale=None, latency_s=None, route=None):
     qt = q.get("question", "")
     answers = q.get("answers", None)
     stakes_values = []
@@ -216,6 +254,8 @@ def _tombstone(q, found, text, via="research", rationale=None):
         "value": q.get("value", None),
         "stakes": max(stakes_values) if stakes_values else None,
         "recommendation": q.get("recommendation", None),
+        "latency_s": latency_s,
+        "route": route,
     }
     if found:
         tomb = {"question": qt, "status": "ANSWERED", "fact": text,
@@ -237,7 +277,7 @@ STOP_CONVERGED = "converged"
 
 
 def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, seed_evidence=None,
-            triager=None, judge=None, refiner=None):
+            triager=None, judge=None, refiner=None, judge_batch=None):
     cfg = {**DEFAULTS, **(cfg or {})}
     cfg["k"] = max(1, int(cfg["k"]))
     answerer = answerer or grounded_answer
@@ -245,7 +285,13 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
     refiner = refiner or refine_prompt
     triager = triager or triage_batch
     judge = judge or judgment_call
+    judge_batch = judge_batch or judgment_batch
     progress = progress or (lambda m: None)
+    timings = {stage: 0.0 for stage in
+               ("triage_s", "judge_s", "answer_s", "refine_s", "respond_s")}
+    cfg["_dispatch_timings"] = timings
+    cfg["_last_answer_elapsed_s"] = None
+    cfg["_last_judge_elapsed_s"] = None
     rank_cfg = _rank_cfg(bool(cfg.get("triage")))
     seeds = [s for s in (seed_evidence or []) if s.strip()]  # caller-known facts; never tombstoned
 
@@ -265,14 +311,14 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
     for rnd in range(cfg["max_rounds"]):
         rounds = rnd + 1
         evidence = seeds + [t.get("evidence", "") for t in tombstones]
-        ranked = rank(problem, evidence, rank_cfg)
+        ranked = _rank_cached(problem, evidence, rank_cfg, cfg)
         for r in ranked:
             question = r.get("question", "")
             derived_answer = r.get("derived_answer")
             if (r.get("recommendation") == "DERIVED"
                     and isinstance(derived_answer, str) and derived_answer
                     and fp(question) not in answered):
-                tomb = _tombstone(r, True, derived_answer, via="derived")
+                tomb = _tombstone(r, True, derived_answer, via="derived", route="DERIVED")
                 tomb["evidence"] = f"{question} -> {derived_answer} (derived during analysis)"
                 tombstones.append(tomb)
                 if run_dir:
@@ -304,27 +350,79 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
         progress(f"round {rounds}: {len(above)} above floor, researching top {len(top)} "
                  f"(best value={top[0].get('value', 0):.2f})")
         routes = triager(problem, top, evidence, cfg) if cfg["triage"] else {}
-        for q in top:
-            route = routes.get(fp(qtext_of(q)), "FINDABLE")
-            if route == "JUDGMENT" and assumes_used < cfg["max_assumes"]:
-                ok, decision, rationale = judge(qtext_of(q), problem, evidence, cfg)
-                if ok:
-                    tomb = _tombstone(q, True, decision, via="assumed", rationale=rationale)
-                    tomb["evidence"] = f"{qtext_of(q)} -> {decision} (assumed: {rationale})"
-                    assumes_used += 1
-                    found = True
+        judgment_present = any(
+            routes.get(fp(qtext_of(q))) == "JUDGMENT" for q in top)
+        batch_results = {}
+        if cfg.get("batch_judge") and judgment_present:
+            judgment_questions = [
+                q for q in top if routes.get(fp(qtext_of(q))) == "JUDGMENT"]
+            batch_results = (judge_batch(problem, judgment_questions, evidence, cfg)
+                             if judgment_questions else {})
+        if cfg.get("parallel_round") and not judgment_present:
+            # A JUDGMENT route is rank-order dependent: a successful judge call consumes
+            # max_assumes budget for later questions. Keep such rounds fully sequential.
+            frozen_evidence = tuple(evidence)
+
+            def answer_in_worker(q):
+                worker_cfg = dict(cfg)
+                # answerer timing is reported through cfg side channels. A shallow copy would
+                # still share this nested dict and race while accumulating elapsed time.
+                worker_cfg["_dispatch_timings"] = {}
+                worker_cfg["_last_answer_elapsed_s"] = None
+                found, text = answerer(q, problem, frozen_evidence, worker_cfg)
+                return (q, found, text, worker_cfg.get("_last_answer_elapsed_s"),
+                        worker_cfg["_dispatch_timings"])
+
+            with ThreadPoolExecutor(max_workers=cfg["k"]) as executor:
+                results = list(executor.map(answer_in_worker, top))
+            for q, found, text, latency_s, worker_timings in results:
+                classified_route = routes.get(fp(qtext_of(q)))
+                tomb = _tombstone(q, found, text, latency_s=latency_s,
+                                  route=classified_route)
+                tombstones.append(tomb)
+                answered.add(fp(qtext_of(q)))
+                if run_dir:
+                    _append_journal(run_dir, tomb)
+                for stage, elapsed in worker_timings.items():
+                    timings[stage] = timings.get(stage, 0.0) + elapsed
+                progress(f"  {'✓' if found else '∅'} {q.get('question', '')[:60]}")
+            evidence = seeds + [t.get("evidence", "") for t in tombstones]
+        else:
+            for q in top:
+                classified_route = routes.get(fp(qtext_of(q)))
+                route = classified_route or "FINDABLE"
+                if route == "JUDGMENT" and assumes_used < cfg["max_assumes"]:
+                    cfg["_last_judge_elapsed_s"] = None
+                    if cfg.get("batch_judge"):
+                        ok, decision, rationale = batch_results.get(
+                            fp(qtext_of(q)), (False, "", "batch judge: missing result"))
+                    else:
+                        ok, decision, rationale = judge(qtext_of(q), problem, evidence, cfg)
+                    if ok:
+                        tomb = _tombstone(
+                            q, True, decision, via="assumed", rationale=rationale,
+                            latency_s=cfg.get("_last_judge_elapsed_s"), route=classified_route)
+                        tomb["evidence"] = f"{qtext_of(q)} -> {decision} (assumed: {rationale})"
+                        assumes_used += 1
+                        found = True
+                    else:
+                        cfg["_last_answer_elapsed_s"] = None
+                        found, text = answerer(q, problem, evidence, cfg)
+                        tomb = _tombstone(q, found, text,
+                                          latency_s=cfg.get("_last_answer_elapsed_s"),
+                                          route=classified_route)
                 else:
+                    cfg["_last_answer_elapsed_s"] = None
                     found, text = answerer(q, problem, evidence, cfg)
-                    tomb = _tombstone(q, found, text)
-            else:
-                found, text = answerer(q, problem, evidence, cfg)
-                tomb = _tombstone(q, found, text)
-            tombstones.append(tomb)
-            answered.add(fp(qtext_of(q)))
-            if run_dir:
-                _append_journal(run_dir, tomb)
-            evidence = seeds + [t.get("evidence", "") for t in tombstones]  # context grows immediately
-            progress(f"  {'✓' if found else '∅'} {q.get('question', '')[:60]}")
+                    tomb = _tombstone(q, found, text,
+                                      latency_s=cfg.get("_last_answer_elapsed_s"),
+                                      route=classified_route)
+                tombstones.append(tomb)
+                answered.add(fp(qtext_of(q)))
+                if run_dir:
+                    _append_journal(run_dir, tomb)
+                evidence = seeds + [t.get("evidence", "") for t in tombstones]  # context grows immediately
+                progress(f"  {'✓' if found else '∅'} {q.get('question', '')[:60]}")
     else:
         stop_reason = "max_rounds reached"
 
@@ -378,6 +476,16 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
         elif os.path.exists(refined_path):
             os.remove(refined_path)
     artificial_cap = k_capped or bool(next_questions)
+    timings["total_dispatch_s"] = sum(timings.values())
+    route_counts = {
+        "research": sum(1 for t in tombstones
+                        if t.get("status") == "ANSWERED" and t.get("via") == "research"),
+        "derived": sum(1 for t in tombstones
+                       if t.get("status") == "ANSWERED" and t.get("via") == "derived"),
+        "assumed": sum(1 for t in tombstones
+                       if t.get("status") == "ANSWERED" and t.get("via") == "assumed"),
+        "not_found": sum(1 for t in tombstones if t.get("status") == "NOT_FOUND"),
+    }
     return {
         "problem": problem, "final": final, "refined_prompt": refined_prompt,
         "tombstones": tombstones,
@@ -388,6 +496,7 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
         "n_gaps": sum(1 for t in tombstones if t["status"] == "NOT_FOUND"),
         "n_derived": sum(1 for t in tombstones if t.get("via") == "derived"),
         "n_assumed": sum(1 for t in tombstones if t.get("via") == "assumed"),
+        "timings": timings, "route_counts": route_counts,
         "assumptions": [{"question": t["question"], "decision": t["fact"],
                          "rationale": t.get("rationale", "")}
                         for t in tombstones if t.get("via") == "assumed"],
@@ -409,7 +518,7 @@ def validate_selection(problem, which, k, cfg=None, answerer=None, responder=Non
     if which == "baseline" or k <= 0:
         sel = []
     else:
-        ranked = rank(problem, [], _rank_cfg())
+        ranked = _rank_cached(problem, [], _rank_cfg(), cfg)
         sel = ranked[:k] if which == "top" else list(reversed(ranked[-k:]))
     progress(f"{which}-{k}: " + (" | ".join(q.get("question", "")[:40] for q in sel) or "(no clarification)"))
     tombstones, evidence = [], []
@@ -446,6 +555,11 @@ def _mock_judge(question, problem, evidence, cfg):
             "reversible and least-surprising choice")
 
 
+def _mock_judge_batch(problem, questions, evidence, cfg):
+    return {fp(qtext_of(question)): _mock_judge(qtext_of(question), problem, evidence, cfg)
+            for question in questions}
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--problem", required=True)
@@ -460,9 +574,15 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true", help="mock answerer/responder (host, no hermes).")
     p.add_argument("--triage", choices=["on", "off"], default=None)
     p.add_argument("--stakes-aware-respond", choices=["on", "off"], default=None)
+    p.add_argument("--parallel-round", action="store_true", default=None)
+    p.add_argument("--batch-judge", action="store_true", default=None)
+    p.add_argument("--dirty-rank", action="store_true", default=None)
     p.add_argument("--output", choices=["prompt", "response", "both"], default=None)
     p.add_argument("--triage-model", default=None)
     p.add_argument("--judge-model", default=None)
+    p.add_argument("--responder-model", default=None)
+    p.add_argument("--responder-provider", default=None)
+    p.add_argument("--responder-timeout", type=int, default=None)
     p.add_argument("--max-assumes", type=int, default=None)
     p.add_argument("--evidence-file",
                    help="seed facts, one per line (# comments skipped), folded into evidence before "
@@ -476,10 +596,9 @@ def main(argv=None):
     if args.k < 1:
         p.error("--k must be at least 1")
 
-    def _int_env(name, cli_val, default):
+    def _int_env(name, raw, cli_val, default):
         if cli_val is not None:            # CLI flag wins
             return cli_val
-        raw = os.environ.get(name)
         if raw is None or not raw.strip():
             return default
         try:
@@ -487,10 +606,9 @@ def main(argv=None):
         except ValueError:
             p.error(f"{name} must be an integer (got {raw!r})")   # names var; stderr; exit 2
 
-    def _float_env(name, cli_val, default):
+    def _float_env(name, raw, cli_val, default):
         if cli_val is not None:            # CLI flag wins
             return cli_val
-        raw = os.environ.get(name)
         if raw is None or not raw.strip():
             return default
         try:
@@ -507,6 +625,12 @@ def main(argv=None):
                       else os.environ.get("INVESTIGATOR_TRIAGE", "on"))
     stakes_aware_setting = (args.stakes_aware_respond if args.stakes_aware_respond is not None
                             else os.environ.get("INVESTIGATOR_STAKES_AWARE_RESPOND", "off"))
+    parallel_round = (args.parallel_round if args.parallel_round is not None
+                      else os.environ.get("INVESTIGATOR_PARALLEL_ROUND", "off").lower() == "on")
+    batch_judge = (args.batch_judge if args.batch_judge is not None
+                   else os.environ.get("INVESTIGATOR_BATCH_JUDGE", "on").lower() == "on")
+    dirty_rank = (args.dirty_rank if args.dirty_rank is not None
+                  else os.environ.get("INVESTIGATOR_DIRTY_RANK", "off").lower() == "on")
     output_setting = (args.output if args.output is not None
                       else os.environ.get("INVESTIGATOR_OUTPUT", "prompt"))
     if output_setting not in {"prompt", "response", "both"}:
@@ -517,11 +641,26 @@ def main(argv=None):
                     or DEFAULTS["triage_model"])
     judge_model = (args.judge_model or os.environ.get("INVESTIGATOR_JUDGE_MODEL")
                    or DEFAULTS["judge_model"])
-    max_rounds = _int_env("INVESTIGATOR_MAX_ROUNDS", args.max_rounds, DEFAULTS["max_rounds"])
+    responder_model = (args.responder_model or os.environ.get("INVESTIGATOR_RESPONDER_MODEL")
+                       or DEFAULTS["responder_model"])
+    responder_provider = (args.responder_provider
+                          or os.environ.get("INVESTIGATOR_RESPONDER_PROVIDER")
+                          or DEFAULTS["responder_provider"])
+    max_rounds = _int_env("INVESTIGATOR_MAX_ROUNDS",
+                          os.environ.get("INVESTIGATOR_MAX_ROUNDS"),
+                          args.max_rounds, DEFAULTS["max_rounds"])
     if max_rounds < 1:
         p.error("max_rounds must be at least 1")
-    max_assumes = _int_env("INVESTIGATOR_MAX_ASSUMES", args.max_assumes, DEFAULTS["max_assumes"])
-    key_gap_threshold = _float_env("INVESTIGATOR_KEY_GAP_THRESHOLD", args.key_gap_threshold,
+    max_assumes = _int_env("INVESTIGATOR_MAX_ASSUMES",
+                           os.environ.get("INVESTIGATOR_MAX_ASSUMES"),
+                           args.max_assumes, DEFAULTS["max_assumes"])
+    responder_timeout = _int_env("INVESTIGATOR_RESPONDER_TIMEOUT",
+                                 os.environ.get("INVESTIGATOR_RESPONDER_TIMEOUT"),
+                                 args.responder_timeout,
+                                 DEFAULTS["responder_timeout"])
+    key_gap_threshold = _float_env("INVESTIGATOR_KEY_GAP_THRESHOLD",
+                                   os.environ.get("INVESTIGATOR_" "KEY_GAP_THRESHOLD"),
+                                   args.key_gap_threshold,
                                    DEFAULTS["key_gap_threshold"])
     if max_assumes < 0:
         p.error("max_assumes must be at least 0")
@@ -533,8 +672,14 @@ def main(argv=None):
                             "key_gap_threshold": key_gap_threshold,
                             "run_dir": args.run_dir, "triage": triage,
                             "stakes_aware_respond": stakes_aware_respond,
+                            "parallel_round": parallel_round,
+                            "batch_judge": batch_judge,
+                            "dirty_rank": dirty_rank,
                             "output": output_setting,
                             "triage_model": triage_model, "judge_model": judge_model,
+                            "responder_model": responder_model,
+                            "responder_provider": responder_provider,
+                            "responder_timeout": responder_timeout,
                             "max_assumes": max_assumes},
                            args.capability)
     answerer = _mock_answerer if args.dry_run else None
@@ -542,6 +687,7 @@ def main(argv=None):
     refiner = _mock_refiner if args.dry_run else None
     triager = _mock_triager if args.dry_run else None
     judge = _mock_judge if args.dry_run else None
+    judge_batch = _mock_judge_batch if args.dry_run else None
     if not args.dry_run and not _HAVE_ASK:
         print(f"live runs need the `ask` skill (model_utils): {_ASK_ERR}", file=sys.stderr)
         return 2
@@ -555,7 +701,8 @@ def main(argv=None):
         out = validate_selection(args.problem, args.validate, args.k, cfg, answerer, responder, prog)
     else:
         out = iterate(args.problem, cfg, answerer, responder, prog, seed_evidence=seeds,
-                      triager=triager, judge=judge, refiner=refiner)
+                      triager=triager, judge=judge, refiner=refiner,
+                      judge_batch=judge_batch)
     out["elapsed_s"] = round(time.time() - t0, 1)
     out["capability"] = args.capability
 

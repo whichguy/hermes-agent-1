@@ -14,6 +14,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -69,6 +70,21 @@ class LoopLogic(unittest.TestCase):
         self.assertEqual(out["n_answered"], 0)
         self.assertFalse(out["artificial_cap_bound"])
 
+    def test_iterate_final_never_bare_wrapper_on_responder_timeout(self):
+        self._patch([[]])
+        dispatch = mock.MagicMock(return_value={
+            "content": "", "error": "Timed out after 300s"})
+        with mock.patch.object(answerer, "_HAVE_ASK", True), \
+             mock.patch.object(answerer, "dispatch_single", dispatch), \
+             mock.patch.object(answerer, "resolve_alias", lambda model: model):
+            out = iterate.iterate(
+                "Ship the billing dashboard", {"max_rounds": 1},
+                answerer=found_answerer, responder=answerer.respond)
+        self.assertTrue(out["final"].strip())
+        self.assertFalse(out["final"].startswith("(no response:"))
+        self.assertIn("Ship the billing dashboard", out["final"])
+        self.assertIn("## Established facts", out["final"])
+
     def test_k_caps_research_per_round(self):
         self._patch([[q("a", .9), q("b", .8), q("c", .7), q("d", .6), q("e", .5)]])
         out = iterate.iterate("p", {"k": 2, "max_rounds": 1, "floor": 0.12},
@@ -77,6 +93,42 @@ class LoopLogic(unittest.TestCase):
         self.assertTrue(out["k_capped"])                # 5 > 2
         self.assertEqual(out["stop_reason"], "max_rounds reached")
         self.assertTrue(out["artificial_cap_bound"])
+
+    def test_parallel_round_preserves_rank_order_and_merges_worker_timings(self):
+        questions = [q("first", .9), q("second", .8), q("third", .7)]
+        self._patch([questions])
+        delays = {"first": .06, "second": .03, "third": .001}
+
+        def run(parallel_round):
+            completed = []
+
+            def delayed_answerer(qq, problem, evidence, cfg):
+                name = qq["question"]
+                time.sleep(delays[name])
+                cfg["_last_answer_elapsed_s"] = delays[name]
+                timings = cfg["_dispatch_timings"]
+                timings["answer_s"] = timings.get("answer_s", 0.0) + delays[name]
+                completed.append(name)
+                return True, f"fact:{name}"
+
+            out = iterate.iterate(
+                "p", {"k": 3, "max_rounds": 1, "floor": .1,
+                      "parallel_round": parallel_round},
+                answerer=delayed_answerer, responder=mock_responder)
+            return out, completed
+
+        sequential, sequential_completion = run(False)
+        parallel, parallel_completion = run(True)
+        self.assertEqual(sequential_completion, ["first", "second", "third"])
+        self.assertEqual(parallel_completion, ["third", "second", "first"])
+        self.assertEqual(parallel["tombstones"], sequential["tombstones"])
+        self.assertEqual(
+            [(t["question"], t["fact"], t["via"]) for t in parallel["tombstones"]],
+            [("first", "fact:first", "research"),
+             ("second", "fact:second", "research"),
+             ("third", "fact:third", "research")])
+        self.assertAlmostEqual(parallel["timings"]["answer_s"], sum(delays.values()))
+        self.assertEqual(parallel["timings"], sequential["timings"])
 
     def test_k_cap_reports_ordered_rounded_leftovers(self):
         self._patch([[q("first", .95), q("second", .82), q("third", .712345),
@@ -169,6 +221,29 @@ class LoopLogic(unittest.TestCase):
                   "answers": [{"stakes": "high"}, {"stakes": True},
                               {"stakes": .6}, {"stakes": 2}]}
         self.assertEqual(iterate._tombstone(ranked, True, "production")["stakes"], 2)
+
+    def test_result_includes_complete_timings_and_route_counts(self):
+        self._patch([[q("known", .9), q("gap", .8)]])
+
+        def mixed_answerer(question, problem, evidence, cfg):
+            return (True, "fact") if question["question"] == "known" else (False, "missing")
+
+        out = iterate.iterate(
+            "p", {"k": 2, "max_rounds": 1, "floor": .1},
+            answerer=mixed_answerer, responder=mock_responder)
+        self.assertEqual(set(out["timings"]), {
+            "triage_s", "judge_s", "answer_s", "refine_s", "respond_s",
+            "total_dispatch_s",
+        })
+        self.assertTrue(all(isinstance(value, float) for value in out["timings"].values()))
+        self.assertEqual(out["timings"]["total_dispatch_s"],
+                         sum(out["timings"][key] for key in out["timings"]
+                             if key != "total_dispatch_s"))
+        self.assertEqual(out["route_counts"], {
+            "research": 1, "derived": 0, "assumed": 0, "not_found": 1,
+        })
+        self.assertEqual(sum(out["route_counts"].values()),
+                         out["n_answered"] + out["n_gaps"])
 
     def test_unresolved_key_questions_threshold_and_non_top_exclusion(self):
         self._patch([[q("highest", .8), q("highest", .7), q("at threshold", .4),
@@ -288,6 +363,35 @@ class LoopLogic(unittest.TestCase):
         self.assertEqual(out["final"], "baseline response")
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][:2], ("p", []))
+
+    def test_dirty_rank_reuses_validate_selection_shared_empty_evidence(self):
+        ranked = [q("top1", .9), q("top2", .8), q("mid", .5), q("bot2", .2), q("bot1", .1)]
+
+        def run(dirty_rank):
+            calls = []
+
+            def fake(problem, evidence, rank_cfg):
+                calls.append((problem, list(evidence), dict(rank_cfg)))
+                return [dict(item) for item in ranked]
+
+            iterate.rank = fake
+            cfg = {"dirty_rank": dirty_rank, "_dirty_rank_memo": {}}
+            top = iterate.validate_selection(
+                "p", "top", 2, cfg=cfg, answerer=found_answerer,
+                responder=mock_responder)
+            bottom = iterate.validate_selection(
+                "p", "bottom", 2, cfg=cfg, answerer=found_answerer,
+                responder=mock_responder)
+            return {"top": top, "bottom": bottom}, calls
+
+        off, off_calls = run(False)
+        on, on_calls = run(True)
+        self.assertEqual(on, off)
+        self.assertEqual(off["top"]["selected"], ["top1", "top2"])
+        self.assertEqual(off["bottom"]["selected"], ["bot1", "bot2"])
+        self.assertEqual(len(off_calls), 2)
+        self.assertEqual(len(on_calls), 1)
+        self.assertEqual(on_calls[0][1], [])
 
     # ── seed evidence (relentless-solve prerequisite) ──
     def test_seed_evidence_reaches_rank_and_responder(self):
@@ -436,6 +540,22 @@ class Durability(unittest.TestCase):
             "gap_reason": "not recorded",
         }])
 
+    def test_resume_old_tombstone_without_timing_or_route(self):
+        old_answer = {
+            "question": "legacy answer", "status": "ANSWERED", "fact": "known",
+            "evidence": "legacy answer -> known", "via": "research",
+        }
+        with open(os.path.join(self.tmp, iterate.JOURNAL), "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"kind": "header", "problem_fp": answerer.fp("p")}) + "\n")
+            fh.write(json.dumps(old_answer) + "\n")
+        self._patch([[]])
+        out = iterate.iterate(
+            "p", {"max_rounds": 1, "run_dir": self.tmp},
+            answerer=found_answerer, responder=mock_responder)
+        self.assertEqual(out["n_resumed"], 1)
+        self.assertEqual(out["tombstones"][0], old_answer)
+        self.assertEqual(out["route_counts"]["research"], 1)
+
     def test_resume_skips_tombstone_without_evidence(self):
         with open(os.path.join(self.tmp, iterate.JOURNAL), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"kind": "header", "problem_fp": answerer.fp("p")}) + "\n")
@@ -500,6 +620,7 @@ class DerivedConsumption(unittest.TestCase):
             "question": "What port?", "status": "ANSWERED", "fact": "5432",
             "evidence": "What port? -> 5432 (derived during analysis)", "via": "derived",
             "value": .9, "stakes": None, "recommendation": "DERIVED",
+            "latency_s": None, "route": "DERIVED",
         })
         self.assertEqual(researched, ["What host?"])
         self.assertEqual(out["n_derived"], 1)
@@ -548,6 +669,38 @@ class DerivedConsumption(unittest.TestCase):
                         answerer=found_answerer, responder=mock_responder)
         self.assertEqual(self.calls[-1]["rank_cfg"]["auto_derive"], "on")
 
+    def test_dirty_rank_reranks_after_derived_evidence_changes(self):
+        derived = self._derived("What port?", .9, "5432")
+        sequence = [[derived, q("What host?", .8)], [q("No more", .01)]]
+
+        def run(dirty_rank):
+            calls = []
+
+            def fake(problem, evidence, rank_cfg):
+                calls.append(list(evidence))
+                return [dict(item) for item in sequence[min(len(calls) - 1, len(sequence) - 1)]]
+
+            iterate.rank = fake
+            out = iterate.iterate(
+                "p", {"triage": True, "dirty_rank": dirty_rank, "k": 1,
+                      "max_rounds": 2, "floor": .12, "_dirty_rank_memo": {}},
+                answerer=lambda qq, problem, evidence, cfg: (True, "db.internal"),
+                responder=mock_responder,
+                triager=lambda *args: {})
+            return out, calls
+
+        off, off_calls = run(False)
+        on, on_calls = run(True)
+        for key in ("tombstones", "stop_reason", "next_questions", "route_counts"):
+            self.assertEqual(on[key], off[key])
+        self.assertEqual(len(off_calls), 2)
+        self.assertEqual(len(on_calls), 2)
+        self.assertEqual(on_calls[0], [])
+        self.assertEqual(on_calls[1], [
+            "What port? -> 5432 (derived during analysis)",
+            "What host? -> db.internal",
+        ])
+
 
 class TriageRouting(unittest.TestCase):
     def setUp(self):
@@ -578,7 +731,7 @@ class TriageRouting(unittest.TestCase):
             return True, "blue", "standard default"
 
         out = iterate.iterate(
-            "p", {"triage": True, "k": 1, "max_rounds": 1},
+            "p", {"triage": True, "k": 1, "max_rounds": 1, "batch_judge": False},
             answerer=research, responder=mock_responder,
             triager=lambda *args: {answerer.fp("Choose a color?"): "JUDGMENT"},
             judge=judge)
@@ -607,6 +760,28 @@ class TriageRouting(unittest.TestCase):
             judge=judge)
         self.assertEqual(researched, ["What port?"])
         self.assertEqual(judged, [])
+
+    def test_research_and_derived_tombstones_capture_latency_and_route(self):
+        derived = {**q("What port?", .9), "recommendation": "DERIVED",
+                   "derived_answer": "5432"}
+        self._patch([[derived, q("What host?", .8)]])
+        dispatch = mock.MagicMock(return_value={
+            "content": "db.internal", "error": None, "elapsed": 1.25,
+        })
+        triager = lambda *args: {answerer.fp("What host?"): "FINDABLE"}
+        with mock.patch.object(answerer, "_HAVE_ASK", True), \
+             mock.patch.object(answerer, "dispatch_single", dispatch), \
+             mock.patch.object(answerer, "resolve_alias", lambda model: model):
+            out = iterate.iterate(
+                "p", {"triage": True, "k": 1, "max_rounds": 1},
+                answerer=answerer.grounded_answer, responder=mock_responder,
+                triager=triager)
+        tombs = {t["via"]: t for t in out["tombstones"]}
+        self.assertEqual(tombs["research"]["latency_s"], 1.25)
+        self.assertEqual(tombs["research"]["route"], "FINDABLE")
+        self.assertIsNone(tombs["derived"]["latency_s"])
+        self.assertEqual(tombs["derived"]["route"], "DERIVED")
+        self.assertEqual(out["timings"]["answer_s"], 1.25)
 
     def test_triage_absent_never_calls_triager(self):
         self._patch([[q("a", .9), q("b", .8)]])
@@ -664,12 +839,95 @@ class TriageRouting(unittest.TestCase):
             return True, "default", "conservative"
 
         out = iterate.iterate(
-            "p", {"triage": True, "k": 3, "max_rounds": 1, "max_assumes": 2},
+            "p", {"triage": True, "k": 3, "max_rounds": 1, "max_assumes": 2,
+                  "batch_judge": False},
             answerer=research, responder=mock_responder, triager=triage, judge=judge)
         self.assertEqual(triaged, [["choice 1", "choice 2", "choice 3"]])
         self.assertEqual(judged, ["choice 1", "choice 2"])
         self.assertEqual(researched, ["choice 3"])
         self.assertEqual(out["n_assumed"], 2)
+
+    def test_batch_judge_matches_per_call_rejection_and_budget_cutover(self):
+        questions = [q("choice 1", .9), q("choice 2", .8), q("choice 3", .7)]
+        self._patch([questions])
+        fixed = {
+            answerer.fp("choice 1"): (False, "", "both options are plausible"),
+            answerer.fp("choice 2"): (True, "use JSON", "standard reversible default"),
+            answerer.fp("choice 3"): (True, "use YAML", "also a clean decision"),
+        }
+        batch_calls, per_call_judged = [], []
+
+        def research(qq, problem, evidence, cfg):
+            return True, f"researched:{qq['question']}"
+
+        def batch(problem, batch_questions, evidence, cfg):
+            batch_calls.append(([qq["question"] for qq in batch_questions], list(evidence)))
+            return dict(fixed)
+
+        def per_call(question, problem, evidence, cfg):
+            per_call_judged.append(question)
+            return fixed[answerer.fp(question)]
+
+        common = {
+            "triage": True, "k": 3, "max_rounds": 1, "max_assumes": 1,
+        }
+        triager = lambda *args: {
+            answerer.fp(question["question"]): "JUDGMENT" for question in questions}
+        batched = iterate.iterate(
+            "p", {**common, "batch_judge": True},
+            answerer=research, responder=mock_responder, triager=triager,
+            judge=lambda *args: self.fail("per-call judge used in batch mode"),
+            judge_batch=batch)
+        per_question = iterate.iterate(
+            "p", {**common, "batch_judge": False},
+            answerer=research, responder=mock_responder, triager=triager,
+            judge=per_call,
+            judge_batch=lambda *args: self.fail("batch judge used while disabled"))
+
+        self.assertEqual(batch_calls, [(["choice 1", "choice 2", "choice 3"], [])])
+        self.assertEqual(per_call_judged, ["choice 1", "choice 2"])
+        self.assertEqual(batched["tombstones"], per_question["tombstones"])
+        self.assertEqual(
+            [(t["question"], t["status"], t["via"], t["fact"], t.get("rationale"))
+             for t in batched["tombstones"]],
+            [("choice 1", "ANSWERED", "research", "researched:choice 1", None),
+             ("choice 2", "ANSWERED", "assumed", "use JSON",
+              "standard reversible default"),
+             ("choice 3", "ANSWERED", "research", "researched:choice 3", None)])
+        self.assertEqual(batched["n_assumed"], 1)
+        self.assertEqual(per_question["n_assumed"], 1)
+
+    def test_parallel_round_with_judgment_falls_back_to_sequential(self):
+        questions = [q("choice 1", .9), q("choice 2", .8), q("choice 3", .7)]
+        self._patch([questions])
+
+        def run(parallel_round):
+            researched, judged = [], []
+
+            def research(qq, problem, evidence, cfg):
+                researched.append(qq["question"])
+                return True, "researched"
+
+            def judge(question, problem, evidence, cfg):
+                judged.append(question)
+                return True, "default", "conservative"
+
+            out = iterate.iterate(
+                "p", {"triage": True, "parallel_round": parallel_round,
+                      "k": 3, "max_rounds": 1, "max_assumes": 2,
+                      "batch_judge": False},
+                answerer=research, responder=mock_responder,
+                triager=lambda *args: {
+                    answerer.fp(qq["question"]): "JUDGMENT" for qq in questions},
+                judge=judge)
+            return out, judged, researched
+
+        sequential = run(False)
+        parallel = run(True)
+        self.assertEqual(parallel, sequential)
+        self.assertEqual(parallel[1], ["choice 1", "choice 2"])
+        self.assertEqual(parallel[2], ["choice 3"])
+        self.assertEqual(parallel[0]["n_assumed"], 2)
 
     def test_judge_failure_falls_back_without_assumed_tombstone(self):
         self._patch([[q("choice", .9)]])
@@ -680,7 +938,7 @@ class TriageRouting(unittest.TestCase):
             return True, "researched"
 
         out = iterate.iterate(
-            "p", {"triage": True, "k": 1, "max_rounds": 1},
+            "p", {"triage": True, "k": 1, "max_rounds": 1, "batch_judge": False},
             answerer=research, responder=mock_responder,
             triager=lambda *args: {answerer.fp("choice"): "JUDGMENT"},
             judge=lambda *args: (False, "", "reason"))
@@ -715,7 +973,7 @@ class TriageRouting(unittest.TestCase):
 
             out = iterate.iterate(
                 "p", {"triage": True, "k": 2, "max_rounds": 1,
-                      "max_assumes": 1, "run_dir": tmp},
+                      "max_assumes": 1, "run_dir": tmp, "batch_judge": False},
                 answerer=research, responder=mock_responder, triager=triage, judge=judge)
             self.assertEqual(judged, [])
             self.assertEqual(researched, ["fresh choice 1", "fresh choice 2"])
@@ -744,7 +1002,7 @@ class AssumptionLedger(unittest.TestCase):
     def test_return_includes_assumed_decision_and_rationale(self):
         self._patch([[q("Choose a database?", .9)]])
         out = iterate.iterate(
-            "p", {"triage": True, "k": 1, "max_rounds": 1},
+            "p", {"triage": True, "k": 1, "max_rounds": 1, "batch_judge": False},
             answerer=found_answerer, responder=mock_responder,
             triager=lambda *args: {answerer.fp("Choose a database?"): "JUDGMENT"},
             judge=lambda *args: (True, "use SQLite", "simplest reversible default"))
@@ -985,7 +1243,7 @@ class RefinedPrompt(unittest.TestCase):
             "problem", "final", "refined_prompt", "tombstones", "rounds", "stop_reason",
             "k_capped", "artificial_cap_bound", "n_resumed", "run_dir", "n_answered",
             "n_gaps", "n_derived", "n_assumed", "assumptions", "next_questions",
-            "unresolved_key_questions",
+            "unresolved_key_questions", "timings", "route_counts",
         })
 
     def test_refined_prompt_is_written_to_run_dir(self):
@@ -1100,6 +1358,50 @@ class EnvConfig(unittest.TestCase):
         with mock.patch.dict(os.environ, {"INVESTIGATOR_TRIAGE": "off"}, clear=False):
             self.assertIs(self._captured_cfg(["--triage", "on"])["triage"], True)
 
+    def test_parallel_round_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_PARALLEL_ROUND", None)
+            self.assertIs(self._captured_cfg([])["parallel_round"], False)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_PARALLEL_ROUND": "on"}, clear=False):
+            self.assertIs(self._captured_cfg([])["parallel_round"], True)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_PARALLEL_ROUND": "off"}, clear=False):
+            self.assertIs(self._captured_cfg(["--parallel-round"])["parallel_round"], True)
+
+    def test_batch_judge_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_BATCH_JUDGE", None)
+            self.assertIs(self._captured_cfg([])["batch_judge"], True)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_BATCH_JUDGE": "off"}, clear=False):
+            self.assertIs(self._captured_cfg([])["batch_judge"], False)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_BATCH_JUDGE": "on"}, clear=False):
+            self.assertIs(self._captured_cfg([])["batch_judge"], True)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_BATCH_JUDGE": "off"}, clear=False):
+            self.assertIs(self._captured_cfg(["--batch-judge"])["batch_judge"], True)
+
+    def test_batch_judge_default_on(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_BATCH_JUDGE", None)
+            self.assertIs(iterate.DEFAULTS["batch_judge"], True)
+            self.assertIs(self._captured_cfg([])["batch_judge"], True)
+
+    def test_dirty_rank_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_DIRTY_RANK", None)
+            self.assertIs(self._captured_cfg([])["dirty_rank"], False)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_DIRTY_RANK": "ON"}, clear=False):
+            self.assertIs(self._captured_cfg([])["dirty_rank"], True)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_DIRTY_RANK": "off"}, clear=False):
+            self.assertIs(self._captured_cfg(["--dirty-rank"])["dirty_rank"], True)
+
+    def test_dry_run_batch_judge_wires_batch_mock(self):
+        with mock.patch("iterate.iterate", return_value={"tombstones": []}) as run, \
+             contextlib.redirect_stdout(io.StringIO()):
+            result = iterate.main([
+                "--problem", "p", "--dry-run", "--batch-judge", "--json",
+            ])
+        self.assertEqual(result, 0)
+        self.assertIs(run.call_args.kwargs["judge_batch"], iterate._mock_judge_batch)
+
     def test_triage_model_env_and_cli_precedence(self):
         with mock.patch.dict(os.environ, {"INVESTIGATOR_TRIAGE_MODEL": "env-triage"},
                              clear=False):
@@ -1115,6 +1417,39 @@ class EnvConfig(unittest.TestCase):
             self.assertEqual(
                 self._captured_cfg(["--judge-model", "cli-judge"])["judge_model"],
                 "cli-judge")
+
+    def test_responder_model_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_RESPONDER_MODEL", None)
+            self.assertEqual(self._captured_cfg([])["responder_model"], "glm")
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_RESPONDER_MODEL": "fast"},
+                             clear=False):
+            self.assertEqual(self._captured_cfg([])["responder_model"], "fast")
+            self.assertEqual(
+                self._captured_cfg(["--responder-model", "deepseek"])["responder_model"],
+                "deepseek")
+
+    def test_responder_provider_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_RESPONDER_PROVIDER", None)
+            self.assertEqual(self._captured_cfg([])["responder_provider"], "ollama-glm")
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_RESPONDER_PROVIDER": "env-provider"},
+                             clear=False):
+            self.assertEqual(self._captured_cfg([])["responder_provider"], "env-provider")
+            self.assertEqual(
+                self._captured_cfg(["--responder-provider", "cli-provider"])["responder_provider"],
+                "cli-provider")
+
+    def test_responder_timeout_env_and_cli_precedence(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("INVESTIGATOR_RESPONDER_TIMEOUT", None)
+            self.assertEqual(self._captured_cfg([])["responder_timeout"], 300)
+        with mock.patch.dict(os.environ, {"INVESTIGATOR_RESPONDER_TIMEOUT": "450"},
+                             clear=False):
+            self.assertEqual(self._captured_cfg([])["responder_timeout"], 450)
+            self.assertEqual(
+                self._captured_cfg(["--responder-timeout", "600"])["responder_timeout"],
+                600)
 
     def test_cli_defaults_intentionally_diverge_from_library_defaults(self):
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -1266,6 +1601,96 @@ class EnvConfig(unittest.TestCase):
             os.environ["INVESTIGATOR_STAKES_AWARE_RESPOND"] = "on"
             cfg = self._captured_cfg(["--stakes-aware-respond", "off"])
         self.assertIs(cfg["stakes_aware_respond"], False)
+
+
+class AnswererFallbacks(unittest.TestCase):
+    def _cfg(self, **over):
+        cfg = dict(iterate.DEFAULTS)
+        cfg.update(over)
+        return cfg
+
+    def _dispatching(self, result):
+        dispatch = mock.MagicMock(return_value=result)
+        return mock.patch.object(answerer, "_HAVE_ASK", True), \
+            mock.patch.object(answerer, "dispatch_single", dispatch), \
+            mock.patch.object(answerer, "resolve_alias", lambda model: model)
+
+    def _section(self, text, heading):
+        return text.split(f"## {heading}\n", 1)[1].split("\n\n## ", 1)[0]
+
+    def test_respond_timeout_returns_fallback_not_error_wrapper(self):
+        problem = "Ship the billing dashboard"
+        evidence = [
+            "stack -> Python",
+            "format -> JSON (assumed: standard default)",
+            "deployment -> (known gap: target unknown)",
+        ]
+        have_ask, dispatch, alias = self._dispatching({
+            "content": "", "error": "Timed out after 300s"})
+        with have_ask, dispatch, alias:
+            result = answerer.respond(problem, evidence, self._cfg())
+        self.assertTrue(result.strip())
+        self.assertFalse(result.startswith("(no response:"))
+        self.assertIn(problem, result)
+        self.assertIn("## Task", result)
+        self.assertIn("## Established facts", result)
+        self.assertIn("stack -> Python", result)
+        self.assertIn("## Assumptions", result)
+        self.assertIn("format -> JSON (assumed: standard default)", result)
+        self.assertIn("## Known gaps", result)
+        self.assertIn("deployment -> (known gap: target unknown)", result)
+
+    def test_respond_fallback_buckets_facts_assumptions_and_gaps(self):
+        evidence = [
+            "fact -> observed",
+            "choice -> default (assumed: reversible)",
+            "unknown -> (known gap: no access)",
+        ]
+        have_ask, dispatch, alias = self._dispatching({
+            "content": "", "error": "Timed out after 300s"})
+        with have_ask, dispatch, alias:
+            result = answerer.respond("task", evidence, self._cfg())
+        facts = self._section(result, "Established facts")
+        assumptions = self._section(result, "Assumptions")
+        gaps = self._section(result, "Known gaps")
+        self.assertIn("fact -> observed", facts)
+        self.assertNotIn("assumed:", facts)
+        self.assertIn("choice -> default (assumed: reversible)", assumptions)
+        self.assertNotIn("known gap:", assumptions)
+        self.assertIn("unknown -> (known gap: no access)", gaps)
+
+    def test_respond_fallback_nonempty_with_empty_evidence(self):
+        have_ask, dispatch, alias = self._dispatching({
+            "content": "", "error": "Timed out after 300s"})
+        with have_ask, dispatch, alias:
+            result = answerer.respond("task", [], self._cfg())
+        self.assertTrue(result.strip())
+        self.assertEqual(result.count("- (none)"), 3)
+        self.assertIn("## Established facts\n- (none)", result)
+        self.assertIn("## Assumptions\n- (none)", result)
+        self.assertIn("## Known gaps\n- (none)", result)
+
+    def test_refine_prompt_timeout_returns_fallback_prompt(self):
+        problem = "Refine this rollout plan"
+        evidence = [
+            "stack -> Python",
+            "format -> JSON (assumed: standard default)",
+            "deployment -> (known gap: target unknown)",
+        ]
+        have_ask, dispatch, alias = self._dispatching({
+            "content": "", "error": "Timed out after 300s"})
+        with have_ask, dispatch, alias:
+            result = answerer.refine_prompt(problem, evidence, self._cfg())
+        self.assertTrue(result.strip())
+        self.assertFalse(result.startswith("(no refined prompt:"))
+        self.assertIn(problem, result)
+        self.assertIn("## Context", result)
+        self.assertIn("stack -> Python", result)
+        self.assertIn("## Assumptions", result)
+        self.assertIn("format -> JSON (assumed: standard default)", result)
+        self.assertIn("## Open questions", result)
+        self.assertIn("deployment -> (known gap: target unknown)", result)
+        self.assertIn("<!-- refined offline: Timed out after 300s -->", result)
 
 
 @unittest.skipUnless(getattr(answerer, "_HAVE_ASK", False), "model_utils (ask skill) not importable")
@@ -1526,12 +1951,17 @@ class AnswererHardening(unittest.TestCase):
                 else:
                     self.assertNotIn("## Open questions", prompt)
 
-    def test_refine_prompt_dispatch_error_returns_sentinel(self):
+    def test_refine_prompt_dispatch_error_returns_fallback(self):
         dispatch, dispatch_patch, alias_patch = self._patched({
             "content": "", "error": "boom"})
         with dispatch_patch, alias_patch:
             refined = answerer.refine_prompt("task", [], self._cfg())
-        self.assertTrue(refined.startswith("(no refined prompt:"))
+        self.assertTrue(refined.strip())
+        self.assertFalse(refined.startswith("(no refined prompt:"))
+        self.assertIn("task", refined)
+        self.assertIn("## Context", refined)
+        self.assertIn("## Assumptions", refined)
+        self.assertIn("## Open questions", refined)
         self.assertIn("boom", refined)
 
     def test_fenced_judgment_json_is_accepted(self):
@@ -1555,6 +1985,50 @@ class AnswererHardening(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(decision, "")
         self.assertEqual(rationale, "both are plausible")
+
+    def test_judgment_batch_dispatches_once_and_rejects_items_independently(self):
+        dispatch, dispatch_patch, alias_patch = self._patched({
+            "content": json.dumps([
+                {"i": 1, "decision": "use JSON", "rationale": "standard default"},
+                {"i": 2, "decision": "It depends", "rationale": "both are plausible"},
+                {"i": 3, "cannot_decide": True, "reason": "equivalent choices"},
+            ]),
+            "error": None,
+            "elapsed": 2.5,
+        })
+        questions = [q("format?", .9), q("color?", .8), q("layout?", .7), q("name?", .6)]
+        cfg = self._cfg(_dispatch_timings={"judge_s": 1.0})
+        with dispatch_patch, alias_patch:
+            results = answerer.judgment_batch("task", questions, ["known fact"], cfg)
+
+        dispatch.assert_called_once()
+        self.assertEqual(dispatch.call_args.args[2:], ("", "", None, cfg["judge_timeout"],
+                                                       cfg["judge_provider"]))
+        prompt = dispatch.call_args.args[1]
+        self.assertIn("reasonable, CONSERVATIVE judgment call", prompt)
+        self.assertIn("reversible, standard, or least-surprising", prompt)
+        self.assertIn("STRICT JSON array", prompt)
+        self.assertEqual(results[answerer.fp("format?")],
+                         (True, "use JSON", "standard default"))
+        self.assertEqual(results[answerer.fp("color?")],
+                         (False, "", "both are plausible"))
+        self.assertEqual(results[answerer.fp("layout?")],
+                         (False, "", "equivalent choices"))
+        self.assertEqual(results[answerer.fp("name?")],
+                         (False, "", "batch judge: missing result"))
+        self.assertEqual(cfg["_last_judge_elapsed_s"], 2.5)
+        self.assertEqual(cfg["_dispatch_timings"]["judge_s"], 3.5)
+
+    def test_judgment_batch_container_failure_rejects_every_question(self):
+        dispatch, dispatch_patch, alias_patch = self._patched({
+            "content": "not JSON", "error": None,
+        })
+        questions = [q("first?", .9), q("second?", .8)]
+        with dispatch_patch, alias_patch:
+            results = answerer.judgment_batch("task", questions, [], self._cfg())
+        self.assertEqual(set(results), {answerer.fp("first?"), answerer.fp("second?")})
+        self.assertTrue(all(not result[0] and result[1] == "" and result[2]
+                            for result in results.values()))
 
     def test_gap_naming_conservative_judgment_is_accepted(self):
         dispatch, dispatch_patch, alias_patch = self._patched({

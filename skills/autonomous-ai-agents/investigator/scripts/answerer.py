@@ -128,6 +128,21 @@ def _extract(r):
     return "", (err or "empty response")
 
 
+def _record_elapsed(cfg, stage, r):
+    """Capture optional dispatch timing without changing any answerer return contract."""
+    elapsed = r.get("elapsed")
+    if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool):
+        elapsed = None
+    elif elapsed is not None:
+        elapsed = float(elapsed)
+    cfg[f"_last_{stage}_elapsed_s"] = elapsed
+    timings = cfg.get("_dispatch_timings")
+    if isinstance(timings, dict) and elapsed is not None:
+        key = f"{stage}_s"
+        timings[key] = timings.get(key, 0.0) + elapsed
+    return elapsed
+
+
 def _parse_json_container(text, expected_type):
     """Parse JSON, accepting a full markdown fence or surrounding prose around one container."""
     raw = text.strip()
@@ -176,6 +191,7 @@ def grounded_answer(question, problem, evidence, cfg):
     r = dispatch_single(resolve_alias(cfg["answer_model"]), prompt, "", cfg["answer_toolsets"],
                         cfg["answer_max_turns"], cfg["answer_timeout"], cfg["answer_provider"],
                         cwd=cfg.get("answer_cwd"))
+    _record_elapsed(cfg, "answer", r)
     text = read_answer_artifact(apath) if use_artifact else None
     if text is not None:
         text, err = _strip_suggestion(text), None
@@ -223,6 +239,7 @@ def triage_batch(problem, questions, evidence, cfg):
     try:
         r = dispatch_single(resolve_alias(cfg["triage_model"]), prompt, "", "", None,
                             cfg["triage_timeout"], cfg["triage_provider"])
+        _record_elapsed(cfg, "triage", r)
         text, err = _extract(r)
         if err:
             return {}
@@ -258,6 +275,7 @@ def judgment_call(question, problem, evidence, cfg):
     try:
         r = dispatch_single(resolve_alias(cfg["judge_model"]), prompt, "", "", None,
                             cfg["judge_timeout"], cfg["judge_provider"])
+        _record_elapsed(cfg, "judge", r)
         text, err = _extract(r)
     except Exception as exc:
         return False, "", str(exc) or "judgment dispatch failed"
@@ -279,6 +297,116 @@ def judgment_call(question, problem, evidence, cfg):
     if _JUDGE_HEDGE_RE.search(decision):
         return False, "", rationale or decision
     return True, decision, rationale
+
+
+def judgment_batch(problem, questions, evidence, cfg):
+    """Judge one round's ordered JUDGMENT questions in one no-tools model call.
+
+    Every input question receives a judgment_call-compatible result. Dispatch or container
+    failures reject every item so the loop can fall back to research; malformed individual
+    entries reject only the affected question.
+    """
+    results = {
+        fp(qtext_of(question)): (False, "", "batch judge: missing result")
+        for question in questions
+    }
+    if not questions:
+        return results
+
+    blocks = [f"{i}. Question: {qtext_of(question)}"
+              for i, question in enumerate(questions, 1)]
+    facts = "\n".join(f"- {item}" for item in evidence) or "(none yet)"
+    prompt = (
+        f"TASK: {problem}\n\nEstablished facts so far:\n{facts}\n\n"
+        "No discoverable fact exists for these questions. For EVERY numbered question, make "
+        "a reasonable, CONSERVATIVE judgment call: prefer the reversible, standard, or "
+        "least-surprising option.\n\n"
+        + "<questions>\n" + "\n".join(blocks) + "\n</questions>"
+        + '\n\nReply with a STRICT JSON array and nothing else, with one object per index: '
+          '[{"i": <index>, "decision": "...", "rationale": "..."}]. If a question is '
+          'genuinely undecidable, use this object shape at that index instead: '
+          '{"i": <index>, "cannot_decide": true, "reason": "..."}.'
+    )
+    try:
+        r = dispatch_single(resolve_alias(cfg["judge_model"]), prompt, "", "", None,
+                            cfg["judge_timeout"], cfg["judge_provider"])
+        _record_elapsed(cfg, "judge", r)
+        text, err = _extract(r)
+        if err:
+            reason = f"batch judge: {err}"
+            return {key: (False, "", reason) for key in results}
+        parsed = _parse_json_container(text, list)
+    except Exception as exc:
+        reason = f"batch judge: {str(exc) or 'dispatch or parse failed'}"
+        return {key: (False, "", reason) for key in results}
+
+    seen = set()
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("i")
+        if (not isinstance(index, int) or isinstance(index, bool)
+                or index < 1 or index > len(questions) or index in seen):
+            continue
+        seen.add(index)
+        key = fp(qtext_of(questions[index - 1]))
+        if item.get("cannot_decide") is True:
+            reason = item.get("reason")
+            results[key] = (False, "", reason.strip() if isinstance(reason, str) and reason.strip()
+                            else CANNOT_DECIDE)
+            continue
+        decision, rationale = item.get("decision"), item.get("rationale")
+        if not isinstance(decision, str) or not isinstance(rationale, str):
+            results[key] = (False, "", "response must contain string decision and rationale")
+        elif _JUDGE_HEDGE_RE.search(decision):
+            results[key] = (False, "", rationale or decision)
+        else:
+            results[key] = (True, decision, rationale)
+    return results
+
+
+def _bucket_evidence(evidence):
+    facts, assumptions, gaps = [], [], []
+    for item in evidence or []:
+        if not isinstance(item, str):
+            continue
+        if "(known gap:" in item:
+            gaps.append(item)
+        elif "(assumed:" in item:
+            assumptions.append(item)
+        else:
+            facts.append(item)
+    return facts, assumptions, gaps
+
+
+def _fallback_bullets(items):
+    return "\n".join(f"- {item}" for item in items) if items else "- (none)"
+
+
+def _fallback_final(problem, evidence, err):
+    facts, assumptions, gaps = _bucket_evidence(evidence)
+    reason = err or "unknown error"
+    return (
+        "# Offline investigation summary\n\n"
+        f"The responder was unavailable or errored ({reason}); this was assembled offline "
+        "from the investigation journal.\n\n"
+        f"## Task\n{problem}\n\n"
+        f"## Established facts\n{_fallback_bullets(facts)}\n\n"
+        f"## Assumptions\n{_fallback_bullets(assumptions)}\n\n"
+        f"## Known gaps\n{_fallback_bullets(gaps)}"
+    )
+
+
+def _fallback_refined_prompt(problem, evidence, err):
+    facts, assumptions, gaps = _bucket_evidence(evidence)
+    reason = err or "unknown error"
+    return (
+        f"{problem}\n\n"
+        f"## Context\n{_fallback_bullets(facts)}\n\n"
+        f"## Assumptions\n{_fallback_bullets(assumptions)}\n\n"
+        f"## Open questions\n{_fallback_bullets(gaps)}\n\n"
+        f"<!-- refined offline: {reason} -->"
+    )
 
 
 def respond(problem, evidence, cfg):
@@ -348,8 +476,11 @@ def respond(problem, evidence, cfg):
     r = dispatch_single(resolve_alias(cfg["responder_model"]), prompt, "", cfg.get("responder_toolsets", ""),
                         None, cfg["responder_timeout"], cfg["responder_provider"],
                         cwd=cfg.get("responder_cwd"))
+    _record_elapsed(cfg, "respond", r)
     text, err = _extract(r)
-    return text or f"(no response: {err})"
+    if text:
+        return text
+    return _fallback_final(problem, evidence, err)
 
 
 def refine_prompt(problem, evidence, cfg):
@@ -377,5 +508,8 @@ def refine_prompt(problem, evidence, cfg):
     r = dispatch_single(resolve_alias(cfg["responder_model"]), prompt, "",
                         cfg.get("responder_toolsets", ""), None, cfg["responder_timeout"],
                         cfg["responder_provider"], cwd=cfg.get("responder_cwd"))
+    _record_elapsed(cfg, "refine", r)
     text, err = _extract(r)
-    return text or f"(no refined prompt: {err})"
+    if text:
+        return text
+    return _fallback_refined_prompt(problem, evidence, err)
