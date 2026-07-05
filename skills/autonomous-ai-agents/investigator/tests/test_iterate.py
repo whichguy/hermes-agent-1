@@ -773,7 +773,7 @@ class TriageRouting(unittest.TestCase):
              mock.patch.object(answerer, "dispatch_single", dispatch), \
              mock.patch.object(answerer, "resolve_alias", lambda model: model):
             out = iterate.iterate(
-                "p", {"triage": True, "k": 1, "max_rounds": 1},
+                "p", {"triage": True, "k": 1, "max_rounds": 1, "safety_ladder": False},
                 answerer=answerer.grounded_answer, responder=mock_responder,
                 triager=triager)
         tombs = {t["via"]: t for t in out["tombstones"]}
