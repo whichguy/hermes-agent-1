@@ -106,6 +106,7 @@ DEFAULTS = {
     "k": 6, "max_rounds": 3, "floor": 0.12, "key_gap_threshold": 0.40,
     "output": "response", "stakes_aware_respond": False, "parallel_round": False,
     "batch_judge": True, "dirty_rank": False,
+    "capability": "act", "safety_ladder": True,
     "triage": False, "triage_model": "fast", "triage_provider": "ollama-glm",
     "triage_timeout": 60, "judge_model": "deepseek", "judge_provider": "ollama-glm",
     "judge_timeout": 120, "max_assumes": 6,
@@ -127,6 +128,7 @@ def apply_capability(cfg, level):
     """Set answer_toolsets + answer_directive + answer_artifact_write from a capability
     level (act|experiment|read)."""
     cap = CAPABILITIES.get(level, CAPABILITIES["act"])
+    cfg["capability"] = level
     cfg["answer_toolsets"] = cap["toolsets"]
     cfg["answer_directive"] = cap["directive"]
     cfg["answer_artifact_write"] = cap.get("artifact_write", True)
@@ -577,6 +579,7 @@ def main(argv=None):
     p.add_argument("--parallel-round", action="store_true", default=None)
     p.add_argument("--batch-judge", action="store_true", default=None)
     p.add_argument("--dirty-rank", action="store_true", default=None)
+    p.add_argument("--safety-ladder", choices=["on", "off"], default=None)
     p.add_argument("--output", choices=["prompt", "response", "both"], default=None)
     p.add_argument("--triage-model", default=None)
     p.add_argument("--judge-model", default=None)
@@ -631,12 +634,15 @@ def main(argv=None):
                    else os.environ.get("INVESTIGATOR_BATCH_JUDGE", "on").lower() == "on")
     dirty_rank = (args.dirty_rank if args.dirty_rank is not None
                   else os.environ.get("INVESTIGATOR_DIRTY_RANK", "off").lower() == "on")
+    safety_ladder_setting = (args.safety_ladder if args.safety_ladder is not None
+                             else os.environ.get("INVESTIGATOR_SAFETY_LADDER", "on"))
     output_setting = (args.output if args.output is not None
                       else os.environ.get("INVESTIGATOR_OUTPUT", "prompt"))
     if output_setting not in {"prompt", "response", "both"}:
         p.error(f"INVESTIGATOR_OUTPUT must be prompt, response, or both (got {output_setting!r})")
     triage = triage_setting.lower() == "on"
     stakes_aware_respond = stakes_aware_setting.lower() == "on"
+    safety_ladder = safety_ladder_setting.lower() == "on"
     triage_model = (args.triage_model or os.environ.get("INVESTIGATOR_TRIAGE_MODEL")
                     or DEFAULTS["triage_model"])
     judge_model = (args.judge_model or os.environ.get("INVESTIGATOR_JUDGE_MODEL")
@@ -675,6 +681,7 @@ def main(argv=None):
                             "parallel_round": parallel_round,
                             "batch_judge": batch_judge,
                             "dirty_rank": dirty_rank,
+                            "safety_ladder": safety_ladder,
                             "output": output_setting,
                             "triage_model": triage_model, "judge_model": judge_model,
                             "responder_model": responder_model,

@@ -1064,6 +1064,7 @@ class AssumptionLedger(unittest.TestCase):
                     "</established_facts_and_known_gaps>\n\n"
                     f"Produce the best possible response to the task using what's established. "
                     f"State any assumptions you make for unresolved gaps. Be direct and useful.")
+        expected += f"\n\n{answerer._NO_TOOLS_NOTE}"
         ds = mock.MagicMock(return_value={"content": "response", "error": None})
         with mock.patch.object(answerer, "dispatch_single", ds), \
              mock.patch.object(answerer, "resolve_alias", lambda m: m):
@@ -1091,6 +1092,7 @@ class StakesAwareRespond(unittest.TestCase):
                     "</established_facts_and_known_gaps>\n\n"
                     f"Produce the best possible response to the task using what's established. "
                     f"State any assumptions you make for unresolved gaps. Be direct and useful.")
+        expected += f"\n\n{answerer._NO_TOOLS_NOTE}"
         self.assertEqual(self._respond_prompt(problem, evidence, cfg), expected)
 
     def test_on_buckets_established_minor_and_key_gaps(self):
@@ -1697,6 +1699,7 @@ class AnswererFallbacks(unittest.TestCase):
 class JudgmentCall(unittest.TestCase):
     def _cfg(self, **over):
         cfg = dict(iterate.DEFAULTS)
+        cfg["safety_ladder"] = False
         cfg.update(over)
         return cfg
 
@@ -1741,6 +1744,14 @@ class JudgmentCall(unittest.TestCase):
         self.assertEqual(decision, "")
         self.assertTrue(rationale)
 
+    def test_prompt_includes_no_tools_note(self):
+        ds = mock.MagicMock(return_value={
+            "content": '{"decision": "use SQLite", "rationale": "simplest default"}',
+            "error": None,
+        })
+        self._call(ds)
+        self.assertIn(answerer._NO_TOOLS_NOTE, ds.call_args.args[1])
+
 
 @unittest.skipUnless(getattr(answerer, "_HAVE_ASK", False), "model_utils (ask skill) not importable")
 class GroundedAnswer(unittest.TestCase):
@@ -1749,6 +1760,7 @@ class GroundedAnswer(unittest.TestCase):
 
     def _cfg(self, **over):
         cfg = dict(iterate.DEFAULTS)
+        cfg["safety_ladder"] = False
         cfg.update(over)
         return cfg
 
@@ -1803,6 +1815,7 @@ class AnswerArtifacts(unittest.TestCase):
 
     def _cfg(self, capability="act", **over):
         cfg = iterate.apply_capability(dict(iterate.DEFAULTS), capability)
+        cfg["safety_ladder"] = False
         cfg["run_dir"] = self.tmp
         cfg.update(over)
         return cfg
@@ -1870,6 +1883,7 @@ class AnswerArtifacts(unittest.TestCase):
 class AnswererHardening(unittest.TestCase):
     def _cfg(self, **over):
         cfg = dict(iterate.DEFAULTS)
+        cfg["safety_ladder"] = False
         cfg.update(over)
         return cfg
 
@@ -1909,6 +1923,15 @@ class AnswererHardening(unittest.TestCase):
             answerer.fp("Choose format?"): "JUDGMENT",
             answerer.fp("What version?"): "FINDABLE",
         })
+
+    def test_triage_prompt_includes_no_tools_note(self):
+        dispatch, dispatch_patch, alias_patch = self._patched({
+            "content": '[{"i": 1, "route": "FINDABLE"}]',
+            "error": None,
+        })
+        with dispatch_patch, alias_patch:
+            answerer.triage_batch("task", [q("What version?", .8)], [], self._cfg())
+        self.assertIn(answerer._NO_TOOLS_NOTE, dispatch.call_args.args[1])
 
     def test_triage_drops_duplicate_and_invalid_entries(self):
         dispatch, dispatch_patch, alias_patch = self._patched({
@@ -1950,6 +1973,12 @@ class AnswererHardening(unittest.TestCase):
                     self.assertIn("## Open questions", prompt)
                 else:
                     self.assertNotIn("## Open questions", prompt)
+
+    def test_refine_prompt_includes_no_tools_note(self):
+        dispatch, dispatch_patch, alias_patch = self._patched()
+        with dispatch_patch, alias_patch:
+            answerer.refine_prompt("task", ["fact"], self._cfg())
+        self.assertIn(answerer._NO_TOOLS_NOTE, dispatch.call_args.args[1])
 
     def test_refine_prompt_dispatch_error_returns_fallback(self):
         dispatch, dispatch_patch, alias_patch = self._patched({
