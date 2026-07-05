@@ -1,0 +1,56 @@
+… === whatsapp-send (comms-send; key-gap) ===
+… stakes-ab-1: What is the current status of the deploy
+  -> fired=True mechanical=True winner=stakes-off
+… === slack-announce (comms-send; key-gap) ===
+… stakes-ab-1: Is the feature fully available to all us
+  -> fired=True mechanical=True winner=stakes-off
+… === add-auth (code-feature; key-gap) ===
+… stakes-ab-1: Is your web app a Single Page Applicatio
+  -> fired=False mechanical=True winner=None
+… === deploy-app (devops; key-gap) ===
+… stakes-ab-1: What technology stack and deployment inf
+  -> fired=False mechanical=True winner=None
+… === portfolio-check (finance; key-gap) ===
+… stakes-ab-1: What is your personal risk tolerance and
+  -> fired=True mechanical=True winner=stakes-off
+… === buy-rent (life; key-gap) ===
+… stakes-ab-1: What is your current amount of liquid sa
+  -> fired=True mechanical=True winner=stakes-on
+… === gmail-triage (email; guardrail) ===
+… stakes-ab-1: What criteria define an email as 'import
+  -> fired=False mechanical=True winner=None
+… === cal-schedule (calendar; guardrail) ===
+… stakes-ab-1: What is Alex's email address or calendar
+  -> fired=False mechanical=True winner=None
+… === explain-oauth (knowledge; guardrail) ===
+… stakes-ab-1: Should the explanation assume the use of
+  -> fired=False mechanical=True winner=None
+… === review-pr (code-review; guardrail) ===
+… stakes-ab-1: What is the URL or identifier of the ope
+  -> fired=False mechanical=True winner=None
+… === organize-files (system-files; guardrail) ===
+… stakes-ab-1: What operating system and scripting envi
+  -> fired=False mechanical=True winner=None
+… === summarize-pdf (docs; guardrail) ===
+… stakes-ab-1: Who is the target audience for this summ
+  -> fired=True mechanical=True winner=stakes-on
+… === plan-day (planning; guardrail) ===
+… stakes-ab-1: What is your energy level throughout the
+  -> fired=True mechanical=True winner=stakes-on
+… === security-audit (code-review; guardrail) ===
+… stakes-ab-1: What types of sensitive data does the se
+  -> fired=False mechanical=True winner=None
+
+=== stakes-aware responder A/B ===
+key-gap precondition: fired 4 · did not fire 2
+fired key-gap verdicts: stakes-on 1 · stakes-off 3 · tie 0
+stakes-on wins 1 : stakes-off wins 3 (ratio 0.33, n=4)
+mechanical checks: all passed
+guardrail precondition: fired 2 of 8
+guardrail regressions: none
+  whatsapp-send    key-gap   majority=stakes-off votes=['stakes-on', 'stakes-off', 'stakes-off']
+  slack-announce   key-gap   majority=stakes-off votes=['stakes-off', 'stakes-off', 'stakes-off']
+  portfolio-check  key-gap   majority=stakes-off votes=['stakes-off', 'stakes-off', 'stakes-off']
+  buy-rent         key-gap   majority=stakes-on  votes=['stakes-on', 'stakes-on', 'stakes-on']
+  summarize-pdf    guardrail majority=stakes-on  votes=['stakes-on', 'stakes-on', 'stakes-on']
+  plan-day         guardrail majority=stakes-on  votes=['stakes-on', 'stakes-on', 'stakes-on']

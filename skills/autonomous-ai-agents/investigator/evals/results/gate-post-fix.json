@@ -1,0 +1,131 @@
+{
+  "rows": [
+    {
+      "prompt": "whatsapp-send",
+      "cat": "comms-send",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-off",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-off",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A directly asks for the specific missing information needed to craft and send the message, while Response B makes and acts on risky assumptions, producing a vague draft that could mislead the team.",
+        "Response A directly asks for the specific missing information needed to act, while Response B makes and proceeds with risky assumptions, producing a vague draft that could mislead the team.",
+        "Response A provides a ready-to-use draft message despite gaps, while B only lists requirements without offering any actionable output."
+      ],
+      "selected": [
+        "Who is the specific point of contact for reporting issues or bugs related to this deploy?"
+      ],
+      "values": [
+        0.556
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "Who is the specific point of contact for reporting issues or bugs related to this deploy?",
+          "value": 0.5555956232700374,
+          "stakes": 0.8,
+          "gap_reason": "No specific deploy is identified in the task or established facts, and the wiki references multiple unrelated deploys (Hermes Docker, solar project) none of which designate a bug-report point of contact. \"My team\" is also unspecified (Fortified Strength, Salesforce engineering, Hermes ops, etc.)."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "Who is the specific point of contact for reporting issues or bugs related to this deploy?",
+          "status": "NOT_FOUND",
+          "fact": "No specific deploy is identified in the task or established facts, and the wiki references multiple unrelated deploys (Hermes Docker, solar project) none of which designate a bug-report point of contact. \"My team\" is also unspecified (Fortified Strength, Salesforce engineering, Hermes ops, etc.).",
+          "evidence": "Who is the specific point of contact for reporting issues or bugs related to this deploy? -> (known gap: No specific deploy is identified in the task or established facts, and the wiki references multiple unrelated deploys (Hermes Docker, solar project) none of which designate a bug-report point of contact. \"My team\" is also unspecified (Fortified Strength, Salesforce engineering, Hermes ops, etc.).)",
+          "via": "research",
+          "value": 0.5555956232700374,
+          "stakes": 0.8,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1585,
+      "stakes_on_len": 2226,
+      "stakes_off_final": "I can't send this message as-is \u2014 there isn't enough to act on, and this call has no tools available anyway. Here's what I need from you to make it a one-shot send:\n\n**Unresolved gaps**\n\n1. Which deploy? No deploy is identified in context. I see references to unrelated deploys (Hermes Docker, solar project) in the wiki, but nothing that points at a specific one you'd be messaging your team about right now. I'd need the deploy name/version, what shipped, and whether it's complete or in-progress.\n\n2. Who is \"my team\"? Candidates from your profile: Fortified Strength staff, a Salesforce engineering team, USAW officials, Hermes ops. The recipient determines the WhatsApp group/contact and the tone.\n\n3. What's the message? I don't have draft content. At minimum I'd want: what deployed, when, impact/what to test, and the bug-report point of contact (the gap flagged above \u2014 who should people ping if something breaks?).\n\n**What I'd do once you fill those in**\n\nDraft a tight deploy notice in your preferred style (lead with takeaway + action, bold key names/times, one line per point), then send it via the WhatsApp gateway to the group/contact you name. On CLI this needs a tool-enabled turn \u2014 this sandbox has no outbound channels.\n\n**Quickest path forward** \u2014 reply with:\n- Deploy name + status (shipped / rolling / blocked)\n- Team / WhatsApp destination (group name or contact)\n- Bug-report POC (or say \"I'll be the contact\" and I'll use you)\n- Any specifics to highlight (downtime, config changes, rollback plan)\n\nI'll turn that into the message and send it on the next turn.",
+      "stakes_on_final": "I can't send a WhatsApp message from this call \u2014 no tools are available here. I won't pretend it went out.\n\nHere's what's missing and the assumptions I'm proceeding on so you have something usable:\n\n**Unresolved gaps and assumptions:**\n\n1. **Which deploy** \u2014 No specific deploy is identified. I'm assuming you mean the most recent Hermes Agent deploy you were involved in, but this could refer to a Salesforce release, a Fortified Strength site update, or something else entirely.\n2. **Which \"team\"** \u2014 \"My team\" is ambiguous. You lead Fortified Strength and also work in a Salesforce engineering context, and you run Hermes ops. I'm assuming your Hermes ops/dev team since that's the most likely context for a deploy notification, but if you meant your Salesforce team or FS staff, the message would need different framing.\n3. **Bug-report point of contact** \u2014 I have no information designating who fields issues for this deploy. I'm assuming you are the primary contact and will route from there.\n\n**Draft message you can copy and send:**\n\n> \ud83d\ude80 Deploy complete. If you hit any issues or bugs related to this release, send them my way and I'll triage. Please include what you were doing, what you expected, and what actually happened.\n\n**To actually send this**, I'd need one of the following:\n- A follow-up turn where I have tools available (I can use the WhatsApp gateway to send it).\n- You tell me which deploy and which team, so the message can be specific (deploy name/version, what changed, expected impact, and the correct bug-report contact if not you).\n\n---\n\n**Material risks \u2014 assumptions to confirm:**\n\n- Deploy identity: assumed to be the most recent Hermes-related deploy. If it's a Salesforce or FS deploy, the message framing changes.\n- Team identity: assumed Hermes ops/dev team. If it's your Salesforce team or FS staff, the audience and tone should be adjusted.\n- Bug-report contact: assumed to be you (Jim). If someone else owns incident response for this deploy, that name should replace \"send them my way.\"\n- Message content: generic because no deploy details were available. A real deploy notice typically includes what changed, when it went out, expected impact, and rollback plan \u2014 none of which I had."
+    },
+    {
+      "prompt": "slack-announce",
+      "cat": "comms-send",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "Are there any limitations, known issues, or specific feedback channels users should be aware of?"
+      ],
+      "values": [
+        0.447
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "Are there any limitations, known issues, or specific feedback channels users should be aware of?",
+          "status": "ANSWERED",
+          "fact": "For the Slack channel announcement task, the key limitations and known issues to be aware of:\n\n**Known issues / gotchas:**\n- The bot must be `/invite`d to the target channel \u2014 it won't auto-join, so an announcement will silently fail to reach a channel the bot isn't in.\n- `message.channels`/`message.groups` event subscriptions + `channels:history`/`groups:history` scopes are required or channel messages are never delivered (most common failure).\n- The Messages Tab must be enabled or DM delivery is blocked.\n- Block Kit button limits: max 20 options/buttons, label \u226475 chars, value \u2264255 chars; oversized values cause silent `invalid_blocks` rejection.\n- Streaming SUGGESTION markers can leak raw `SUGGESTION:{...}` text mid-stream if stripping isn't active (GLM token-by-token streaming is the worst case).\n\n**Feedback channels:** The Hermes project uses GitHub issues (`NousResearch/hermes-agent`) and a Discord community (showcase/help channels) per the user-stories page; there's no dedicated in-app feedback channel. Your local deployment also logs issues to `/opt/data/logs/`.\n\n**Recommendation:** Before posting the launch announcement, verify the bot is invited to the target channel and that a test message lands cleanly. Want me to check the gateway logs for the target channel's health, or draft the announcement now?",
+          "evidence": "Are there any limitations, known issues, or specific feedback channels users should be aware of? -> For the Slack channel announcement task, the key limitations and known issues to be aware of:\n\n**Known issues / gotchas:**\n- The bot must be `/invite`d to the target channel \u2014 it won't auto-join, so an announcement will silently fail to reach a channel the bot isn't in.\n- `message.channels`/`message.groups` event subscriptions + `channels:history`/`groups:history` scopes are required or channel messages are never delivered (most common failure).\n- The Messages Tab must be enabled or DM delivery is blocked.\n- Block Kit button limits: max 20 options/buttons, label \u226475 chars, value \u2264255 chars; oversized values cause silent `invalid_blocks` rejection.\n- Streaming SUGGESTION markers can leak raw `SUGGESTION:{...}` text mid-stream if stripping isn't active (GLM token-by-token streaming is the worst case).\n\n**Feedback channels:** The Hermes project uses GitHub issues (`NousResearch/hermes-agent`) and a Discord community (showcase/help channels) per the user-stories page; there's no dedicated in-app feedback channel. Your local deployment also logs issues to `/opt/data/logs/`.\n\n**Recommendation:** Before posting the launch announcement, verify the bot is invited to the target channel and that a test message lands cleanly. Want me to check the gateway logs for the target channel's health, or draft the announcement now?",
+          "via": "research",
+          "value": 0.44732024950909854,
+          "stakes": 0.9,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1500,
+      "stakes_on_len": 1786,
+      "stakes_off_final": "I can't post to Slack from this session \u2014 no tools are available to me here, so I can't send messages, post to channels, or take any external action. I also don't have two key pieces of context:\n\n1. **What the new feature is** \u2014 there's no feature name, description, or changelog in the established facts.\n2. **Which Slack channel** \u2014 \"the right channel\" isn't specified. The established facts note the Hermes bot must be `/invite`d to a target channel before it can post, and that channel scopes/events must be configured.\n\nWhat's needed to actually do this:\n\n- The feature name and a one-paragraph description (or a link to the release notes / PR).\n- The Slack channel name (or confirmation that a specific one like `#announcements` or `#releases` is the target).\n- Confirmation the Hermes Slack gateway bot is already invited to that channel (otherwise the post silently fails).\n\nOnce you provide those, I can draft the announcement (including any Block Kit buttons for feedback links, respecting the limits noted in the established facts) and a command to send it through the Hermes Slack gateway.\n\nAssumptions I'd make if left to fill the gaps: the feature is a Hermes Agent feature (the established facts reference the Hermes project, `NousResearch/hermes-agent` GitHub issues, and the Hermes Slack gateway). The \"right channel\" would be the one your team uses for release/feature announcements \u2014 but I won't guess which.\n\nWant to give me the feature details and channel name so I can draft it?",
+      "stakes_on_final": "I can't complete this task. Here's what's missing and what would be needed:\n\nWHAT I CANNOT DO\n- This call has no tools available. I cannot post to Slack, run commands, or send messages.\n- No tool-using research call has posted or verified anything (no ANSWERED tombstone in the established facts).\n\nWHAT'S STILL UNKNOWN\n1. Which feature is launching? The task says \"the new feature\" but no feature name, description, or changelog is provided in the established facts.\n2. Which Slack channel is \"the right\" channel? No channel name/ID is specified.\n3. No announcement copy has been drafted or approved.\n\nWHAT THE ESTABLISHED FACTS DO TELL US (pre-flight checklist before posting)\n- The bot must be /invite'd to the target channel first \u2014 announcements silently fail otherwise.\n- Event subscriptions (message.channels / message.groups) + scopes (channels:history, groups:history) must be present or channel messages never deliver.\n- Block Kit limits: max 20 buttons, label \u226475 chars, value \u2264255 chars \u2014 oversized values cause silent invalid_blocks rejection.\n- Local deployment logs issues to /opt/data/logs/.\n\nWHAT'S NEEDED TO PROCEED\n1. Feature name + 1-2 sentence summary (and ideally a link to docs/changelog).\n2. Target Slack channel name.\n3. Confirm the bot is invited to that channel and a test message lands cleanly before the real announcement.\n\nOnce those are provided in a session with tools, I can draft the announcement (with Block Kit buttons linking to docs/feedback channels per your formatting preferences), verify bot membership in the target channel, send a test message, then post the real announcement and confirm delivery from the gateway logs.\n\nWant to give me the feature details and channel name so I can draft the copy now, even though I can't post it from here?"
+    },
+    {
+      "prompt": "gmail-triage",
+      "cat": "email",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "What specific criteria define an email as 'important' for you (e.g., sender, starred, labeled, specific keywords)?"
+      ],
+      "values": [
+        0.714
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "What specific criteria define an email as 'important' for you (e.g., sender, starred, labeled, specific keywords)?",
+          "status": "ANSWERED",
+          "fact": "\"Important\" is defined by your existing inbox-triage and wiki-ingest pipelines: mail in **`in:inbox category:primary`** (excluding Promotions/Social/Updates/Forums) that survives custom label exclusions (Bulk, Receipts, AmazonShipments, MonthlyBills, Stripe, Gusto, Ads) and Python noise filters (Lyft/Uber/DoorDash receipts, AT&T bills, Wix automations, USPS/FedEx/UPS tracking, one-way \"your order/statement/bill\" subjects); among those, threads are flagged as **complex/important** when they involve money/legal/tax/medical, >3 people, sensitive content, or unknown preferences.",
+          "evidence": "What specific criteria define an email as 'important' for you (e.g., sender, starred, labeled, specific keywords)? -> \"Important\" is defined by your existing inbox-triage and wiki-ingest pipelines: mail in **`in:inbox category:primary`** (excluding Promotions/Social/Updates/Forums) that survives custom label exclusions (Bulk, Receipts, AmazonShipments, MonthlyBills, Stripe, Gusto, Ads) and Python noise filters (Lyft/Uber/DoorDash receipts, AT&T bills, Wix automations, USPS/FedEx/UPS tracking, one-way \"your order/statement/bill\" subjects); among those, threads are flagged as **complex/important** when they involve money/legal/tax/medical, >3 people, sensitive content, or unknown preferences.",
+          "via": "research",
+          "value": 0.7140293795064769,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 1244,
+      "stakes_on_len": 1408,
+      "stakes_off_final": "I can't produce this summary right now \u2014 this session has no tool access, so I cannot fetch, read, or triage your Gmail. Any \"summary\" I gave you without actually querying the inbox would be fabricated, and that's worse than no answer.\n\nWhat's needed to do this properly:\n\n1. A tool-enabled session where I can call the Gmail/himalaya pipeline (or your existing inbox-triage scripts) to pull threads matching `in:inbox category:primary` from the past 7 days, unread only, applying your standard exclusions (Promotions/Social/Updates/Forums + custom labels: Bulk, Receipts, AmazonShipments, MonthlyBills, Stripe, Gusto, Ads + Python noise filters).\n2. Among the surviving threads, flag the complex/important subset: money/legal/tax/medical, >3 participants, sensitive content, or unknown-preference senders.\n3. Summarize that filtered set back to you.\n\nAssumption I'm making: \"this week\" = the last 7 calendar days (roughly Jun 28 \u2013 Jul 4), and \"unread\" = threads still marked unread in `in:inbox`. If you want a different window (e.g., since Monday, or last 14 days), say so.\n\nTo actually get this done, re-run the request in a normal (tool-enabled) session and I'll execute the triage and return a real summary of what's sitting in your inbox.",
+      "stakes_on_final": "I can't retrieve your Gmail in this call \u2014 no tools are available to me right now, so I have no way to query your inbox, apply the triage filters, or read any messages. I won't fabricate a summary.\n\n**What's needed to actually run this:**\n\n1. A tool-enabled session with access to the email pipeline (either `himalaya` CLI or `google_api.py` with Gmail scope).\n2. The existing filter logic applied: `in:inbox category:primary` minus the label exclusions (Bulk, Receipts, AmazonShipments, MonthlyBills, Stripe, Gusto, Ads) and the Python noise filters (ride/food receipts, carrier tracking, one-way \"your order/statement/bill\" subjects).\n3. Date scope: this week (roughly Jun 28 \u2013 Jul 4).\n4. Read unread threads, flag complex/important ones (money/legal/tax/medical, >3 participants, sensitive content, unknown preferences).\n5. Summarize those flagged threads \u2014 sender, subject, gist, any action needed.\n\n**Assumptions I'd make if tools were available:**\n- \"This week\" = last 7 days from today (Jul 4), since it's Saturday.\n- Unread only, as you specified.\n- Primary category only, per the established criteria.\n- Output would group by priority: money/legal/tax/medical first, then multi-party/complex threads, then anything with an action needed vs. FYI.\n\nIf you re-run this in a normal tool-enabled session (or just ask again with tools active), I'll execute the full pipeline and give you the real summary."
+    }
+  ],
+  "elapsed_s": 243.5
+}

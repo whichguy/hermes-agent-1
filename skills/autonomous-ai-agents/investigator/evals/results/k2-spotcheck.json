@@ -1,0 +1,139 @@
+{
+  "rows": [
+    {
+      "prompt": "whatsapp-send",
+      "cat": "comms-send",
+      "k": 2,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A is more concise, avoids redundant assumptions, and directly asks for the missing information without padding the response with unnecessary speculative content.",
+        "Response B provides a more actionable, specific draft message and clearly separates assumptions from missing information, better resolving the user's uncertainty.",
+        "Response A provides a more actionable default message draft and clearly separates assumptions from missing information, making it immediately useful even without tool access."
+      ],
+      "selected": [
+        "What is the estimated timeline or expected completion time for the deploy?",
+        "What is the current status of the deploy (e.g., starting now, in progress, completed, or failed)?"
+      ],
+      "values": [
+        0.676,
+        0.545
+      ],
+      "answered": 0,
+      "gaps": 2,
+      "unresolved_key_questions": [
+        {
+          "question": "What is the estimated timeline or expected completion time for the deploy?",
+          "value": 0.6755382819967887,
+          "stakes": 0.9,
+          "gap_reason": "No deploy task, ticket, or timeline exists in the workspace or conversation context \u2014 the request only asks to send a message \"about the deploy\" without specifying which deploy or its expected completion time."
+        },
+        {
+          "question": "What is the current status of the deploy (e.g., starting now, in progress, completed, or failed)?",
+          "value": 0.5448797673081889,
+          "stakes": 0.9,
+          "gap_reason": "There is no deploy task, ticket, pipeline run, or CI/CD job in the workspace or conversation context \u2014 nothing indicates an active or completed deploy to report a status for."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What is the estimated timeline or expected completion time for the deploy?",
+          "status": "NOT_FOUND",
+          "fact": "No deploy task, ticket, or timeline exists in the workspace or conversation context \u2014 the request only asks to send a message \"about the deploy\" without specifying which deploy or its expected completion time.",
+          "evidence": "What is the estimated timeline or expected completion time for the deploy? -> (known gap: No deploy task, ticket, or timeline exists in the workspace or conversation context \u2014 the request only asks to send a message \"about the deploy\" without specifying which deploy or its expected completion time.)",
+          "via": "research",
+          "value": 0.6755382819967887,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        },
+        {
+          "question": "What is the current status of the deploy (e.g., starting now, in progress, completed, or failed)?",
+          "status": "NOT_FOUND",
+          "fact": "There is no deploy task, ticket, pipeline run, or CI/CD job in the workspace or conversation context \u2014 nothing indicates an active or completed deploy to report a status for.",
+          "evidence": "What is the current status of the deploy (e.g., starting now, in progress, completed, or failed)? -> (known gap: There is no deploy task, ticket, pipeline run, or CI/CD job in the workspace or conversation context \u2014 nothing indicates an active or completed deploy to report a status for.)",
+          "via": "research",
+          "value": 0.5448797673081889,
+          "stakes": 0.9,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1115,
+      "stakes_on_len": 2407,
+      "stakes_off_final": "I can't send a WhatsApp message \u2014 this call has no tools available, so there's no way to reach the WhatsApp gateway or any messaging channel.\n\nBeyond that, there's a content gap: there's no deploy task, CI/CD job, ticket, or timeline anywhere in the workspace or this conversation. I don't know:\n\n- **Which deploy** you're referring to (no project, service, or environment is named)\n- **What status** to report (starting, in progress, completed, failed)\n- **What timeline** to share (ETA, expected completion)\n- **Who \"the team\" is** (no contact list or group chat identifier is available)\n\nWhat I'd need to act on this:\n\n1. **Tool access** \u2014 a session with the WhatsApp gateway tools enabled, or a `hermes send` / `terminal` call that can reach your Baileys-connected WhatsApp.\n2. **Deploy details** \u2014 the service/project name, environment, current status, and any timeline or ETA.\n3. **Recipients** \u2014 the specific WhatsApp group or individual contacts to message.\n\nIf you can tell me the deploy details and confirm who to message, I can draft the message now so it's ready to send in a session with tools enabled.",
+      "stakes_on_final": "I can't send a WhatsApp message from this call \u2014 no tools are available here, so I have no way to post to WhatsApp or any other channel. Nothing was sent. If you want this delivered, run it in a session that has the messaging tools (WhatsApp gateway/Baileys) enabled and give me the deploy details.\n\nBecause the request doesn't specify which deploy, its status, or its timeline, here are the assumptions I'd be proceeding on if tools were available:\n\nAssumptions I'm proceeding on\n\n1. Deploy identity \u2014 I assume \"the deploy\" refers to a specific, already-known deploy that your team would recognize without further context (e.g., today's scheduled release). I cannot confirm which one because no deploy task, ticket, CI/CD run, or pipeline exists in this workspace or conversation.\n\n2. Deploy status \u2014 I assume the deploy is either about to start or has just completed (the two most common reasons to message a team). I'm treating it as \"in progress / starting now\" as the default, since that's the message type most likely to need broadcasting. I have no actual status to report.\n\n3. Timeline \u2014 I assume no firm ETA is known; if one existed I'd include it. Without it the message would say \"ETA TBD / will update when complete\" rather than inventing a completion time.\n\n4. Audience \u2014 I assume \"your team\" means a known WhatsApp group or contact list you'd specify. I don't have a group ID or recipient list, so I can't address it.\n\n5. Message content \u2014 Without status/timeline specifics, a reasonable default message would be a brief heads-up:\n\n   Deploy starting now. Will follow up when it's live and verified. Reply here if you hit any issues.\n\nMaterial risks \u2014 assumptions to confirm\n\n- Which deploy this refers to (service, version, environment) \u2014 unconfirmed; the team may not know which deploy you mean.\n- Current status (starting / in progress / completed / failed) \u2014 unconfirmed; I defaulted to \"starting.\"\n- Expected completion time or ETA \u2014 unconfirmed; none exists in context, so the message would omit a timeline.\n- WhatsApp recipient(s) or group \u2014 unconfirmed; I have no group ID or contact list to target.\n- Whether you want the message sent to a specific WhatsApp group vs. individual DMs \u2014 unconfirmed.\n\nIf you re-run this in a session with tools, tell me: which deploy, its current status, an ETA if known, and the WhatsApp group/contacts to send to. I'll compose and send it immediately."
+    },
+    {
+      "prompt": "deploy-app",
+      "cat": "devops",
+      "k": 2,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A provides more specific, actionable guidance with a clear decision tree, explicit assumptions, and a concrete next step (drafting a CI/CD workflow and runbook), while B is vaguer and less structured.",
+        "Response A provides more specific, actionable guidance including a decision tree, concrete next steps, and explicit assumptions with verification prompts, while B is more generic and less structured.",
+        "Response B is more precise about the two distinct blockers, explicitly confirms assumptions to avoid misinterpretation, and provides a clearer, more structured decision tree for building the missing deployment pipeline."
+      ],
+      "selected": [
+        "What are the criteria for a successful deployment and what is the rollback procedure if they are not met?",
+        "What is the required deployment strategy (e.g., blue-green, canary, rolling update)?"
+      ],
+      "values": [
+        0.693,
+        0.662
+      ],
+      "answered": 1,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What are the criteria for a successful deployment and what is the rollback procedure if they are not met?",
+          "value": 0.693102815218181,
+          "stakes": 0.9,
+          "gap_reason": "No deployment runbook, success criteria, or rollback procedure is documented in this repo \u2014 there is no DEPLOY.md, RUNBOOK, CI/CD workflow, or rollback config; the only release tooling (`scripts/release.py`) generates changelogs and GitHub release tags but defines no deployment health checks or rollback steps."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What are the criteria for a successful deployment and what is the rollback procedure if they are not met?",
+          "status": "NOT_FOUND",
+          "fact": "No deployment runbook, success criteria, or rollback procedure is documented in this repo \u2014 there is no DEPLOY.md, RUNBOOK, CI/CD workflow, or rollback config; the only release tooling (`scripts/release.py`) generates changelogs and GitHub release tags but defines no deployment health checks or rollback steps.",
+          "evidence": "What are the criteria for a successful deployment and what is the rollback procedure if they are not met? -> (known gap: No deployment runbook, success criteria, or rollback procedure is documented in this repo \u2014 there is no DEPLOY.md, RUNBOOK, CI/CD workflow, or rollback config; the only release tooling (`scripts/release.py`) generates changelogs and GitHub release tags but defines no deployment health checks or rollback steps.)",
+          "via": "research",
+          "value": 0.693102815218181,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        },
+        {
+          "question": "What is the required deployment strategy (e.g., blue-green, canary, rolling update)?",
+          "status": "ANSWERED",
+          "fact": "The repo has no deployment strategy defined. The only release tooling is `scripts/release.py`, which generates changelogs and creates GitHub release tags \u2014 it defines no blue-green, canary, rolling update, or any deployment strategy, no health checks, and no rollback procedure. There is no Docker Compose file, no Kubernetes manifests, no CI/CD workflow, no `DEPLOY.md`, and no `.github/` directory. The Dockerfile exists but contains only build instructions, not a deployment strategy.\n\nNOT_FOUND: No deployment strategy is documented or configured in this repo \u2014 there are no Kubernetes manifests, Docker Compose files, CI/CD workflows, blue-green/canary/rolling-update configs, DEPLOY.md, or runbooks. The only release tooling (`scripts/release.py`) handles changelog generation and GitHub release tagging but defines no deployment strategy, health checks, or rollback procedure.",
+          "evidence": "What is the required deployment strategy (e.g., blue-green, canary, rolling update)? -> The repo has no deployment strategy defined. The only release tooling is `scripts/release.py`, which generates changelogs and creates GitHub release tags \u2014 it defines no blue-green, canary, rolling update, or any deployment strategy, no health checks, and no rollback procedure. There is no Docker Compose file, no Kubernetes manifests, no CI/CD workflow, no `DEPLOY.md`, and no `.github/` directory. The Dockerfile exists but contains only build instructions, not a deployment strategy.\n\nNOT_FOUND: No deployment strategy is documented or configured in this repo \u2014 there are no Kubernetes manifests, Docker Compose files, CI/CD workflows, blue-green/canary/rolling-update configs, DEPLOY.md, or runbooks. The only release tooling (`scripts/release.py`) handles changelog generation and GitHub release tagging but defines no deployment strategy, health checks, or rollback procedure.",
+          "via": "research",
+          "value": 0.6620440676654384,
+          "stakes": 0.7,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 2136,
+      "stakes_on_len": 5514,
+      "stakes_off_final": "I can't deploy your app \u2014 and not just because this call has no tools. The repo has no deployment infrastructure to execute.\n\nWhat's actually in the repo vs. what's missing:\n\nAvailable: `scripts/release.py` (changelog generation + GitHub release tagging) and a `Dockerfile` (build instructions only).\n\nMissing entirely: CI/CD workflows, Kubernetes/Docker Compose manifests, deployment strategy (blue-green/canary/rolling), health checks, success criteria, rollback procedure, and any runbook or DEPLOY.md.\n\nSo there's nothing to run. I'd be inventing a deployment, not executing one.\n\nTo actually deploy this app, we need to build the deployment pipeline first. Here's what that requires:\n\n1. Choose a deployment target \u2014 where does this app run? A cloud VM, Kubernetes cluster, a PaaS (Fly.io, Railway, Cloud Run), a VPS? This determines everything downstream.\n\n2. Define the deployment strategy \u2014 even a simple rolling update needs at minimum: build the image, push to registry, pull on target, restart with health check.\n\n3. Write a health check \u2014 an endpoint or script that confirms the new version is serving correctly (e.g., `GET /health` returning 200).\n\n4. Define success criteria \u2014 what signals mean \"deployment succeeded\" (health check passes for N seconds, no error spike, key API responding).\n\n5. Write a rollback procedure \u2014 how to revert to the previous image/tag if criteria fail (re-pull previous tag, restart, verify health).\n\n6. Optionally automate via CI/CD \u2014 a GitHub Actions workflow that runs on tag push, builds, deploys, checks health, and auto-rolls back on failure.\n\nAssumptions I'd make if you say \"go build it\":\n- The app is a web service (the Dockerfile suggests a containerized app).\n- Target is Docker Compose on a single host (simplest viable strategy given no existing infra).\n- Rolling update via `docker compose up -d --no-deps` with health check polling.\n\nIf those assumptions are wrong, tell me the actual target and I'll design the right pipeline. If they're close enough, I can scaffold a DEPLOY.md + docker-compose.yml + health check + rollback script in one pass.\n\nWhat's your deployment target?",
+      "stakes_on_final": "I cannot deploy your app from this context \u2014 and not for the reason you might expect. There are two hard blockers, and I want to be precise about each.\n\nBLOCKER 1: No deployment infrastructure exists in this repo\n\nThe established facts are unambiguous: there is no deployment strategy configured anywhere in the codebase. Specifically, there is no:\n- Kubernetes manifests / Helm chart\n- Docker Compose file\n- CI/CD workflow (no `.github/` directory)\n- `DEPLOY.md` or runbook\n- Blue-green, canary, or rolling-update configuration\n- Health check endpoints or rollback procedure\n\nThe only release tooling is `scripts/release.py`, which generates changelogs and creates GitHub release tags. Tagging a release is not deploying \u2014 it produces a version marker, not a running system. There is nothing in this repo that takes a tag and puts code on a server.\n\nBLOCKER 2: This call has no tools available\n\nEven if a deployment pipeline existed, I cannot execute it from here. This context has no tool access \u2014 no terminal, no shell, no API client, no messaging channel. I cannot run `scripts/release.py`, cannot push a tag, cannot SSH to a host, cannot trigger a CI pipeline, and cannot verify a health check. Any claim that I \"deployed\" or \"released\" would be fabricated. I will not do that.\n\nWHAT I CAN TELL YOU: the path to actually deploying\n\nTo make \"deploy the latest version\" a command that can be executed, you need to decide where this app runs and how it gets there. Here is the decision tree:\n\n1. Pick a deployment target. Where does this app live in production? Common options:\n   - A long-running server you SSH into (bare metal or VM)\n   - A container orchestrator (Kubernetes, ECS, Nomad)\n   - A PaaS (Render, Railway, Fly.io, Heroku-style)\n   - A serverless/edge platform (if applicable to the app type)\n\n2. Define the deploy artifact. The Dockerfile exists and contains build instructions, so the natural artifact is a container image. Decide:\n   - Where the image is pushed (registry: GHCR, ECR, Docker Hub)\n   - How the image is tagged (git SHA, semver from `scripts/release.py`, latest)\n\n3. Define the deployment mechanism. The minimal viable options, in increasing sophistication:\n   - Manual: `docker build && docker push && ssh prod \"docker pull && docker compose up -d\"` \u2014 works but is fragile and has no rollback.\n   - CI-driven: a GitHub Actions workflow in `.github/workflows/deploy.yml` that builds, pushes, and deploys on tag push. This is the smallest step that gives you repeatability.\n   - Orchestrated: Kubernetes manifests + a rolling update strategy with readiness probes and a rollback path.\n\n4. Define success criteria and rollback. At minimum:\n   - A health endpoint (e.g., `GET /healthz` returning 200) that the deploy tool polls after rollout.\n   - A rollback command or procedure (e.g., `kubectl rollout undo`, or redeploy the previous image tag).\n   - A decision window: how long to wait before declaring success or rolling back.\n\nWHAT I RECOMMEND YOU DO NEXT\n\nSince I cannot act from here, the highest-leverage next step is to create the missing deployment runbook as code. Concretely:\n\n- Add a `.github/workflows/deploy.yml` that triggers on tag pushes (the tags `scripts/release.py` already creates), builds the Docker image, pushes it to your registry, and deploys it to your target with a health check and a one-command rollback.\n- Add a `DEPLOY.md` that documents the target, the registry, the success criteria, and the rollback steps.\n\nI can draft both of those \u2014 the workflow file and the runbook \u2014 but I need two pieces of information I do not have: (a) where the app runs in production, and (b) which container registry you use. If you tell me those, I will write the files. If you want me to inspect the existing Dockerfile and `scripts/release.py` to infer the best-fitting default and propose a concrete workflow, I can do that too \u2014 but only once I have tool access, which this call does not provide.\n\nMaterial risks \u2014 assumptions to confirm\n\nI am proceeding on these assumptions to give you an actionable answer rather than stalling:\n\n1. Assumption: \"deploy the latest version\" means produce a running, healthy production instance from the current code \u2014 not merely create a git tag. If you only wanted a release tag, `scripts/release.py` already does that and no deployment is needed; confirm which you meant.\n\n2. Assumption: the Dockerfile is the intended deploy artifact format. It exists and contains build instructions, but I have not verified it produces a runnable production image (no ENTRYPOINT/CMD confirmed). The deployment workflow I would write assumes the Dockerfile yields a self-contained runnable image.\n\n3. Assumption: there is no existing deployment target outside this repo that the facts didn't capture (e.g., a separate infra repo, an external CI system, a platform dashboard). The established facts searched this repo only. If production deployment is owned by another repo or system, the missing pieces may live there and this repo intentionally has no deploy config.\n\n4. Assumption: you want me to help build the missing deployment pipeline rather than perform a one-off manual deploy. Given there is no pipeline to run, there is no \"latest version\" to deploy via any existing mechanism \u2014 the constructive path is to create the mechanism first.\n\nTell me the deployment target and registry, or tell me to inspect the repo and propose a default, and I will produce the workflow + runbook. I will not pretend a deployment happened when none did."
+    }
+  ],
+  "elapsed_s": 194.5
+}

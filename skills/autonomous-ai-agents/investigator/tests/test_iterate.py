@@ -289,6 +289,38 @@ class LoopLogic(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][:2], ("p", []))
 
+    def test_validate_selection_stakes_aware_responder_receives_tombstones_and_key_gaps(self):
+        self._patch([[q("key gap", .8)]])
+        captured = {}
+
+        def responder(problem, evidence, cfg):
+            captured.update(cfg)
+            return "response"
+
+        out = iterate.validate_selection(
+            "p", "top", 1,
+            cfg={"key_gap_threshold": .4, "stakes_aware_respond": True},
+            answerer=notfound_answerer, responder=responder)
+        self.assertEqual(captured["tombstones"], out["tombstones"])
+        self.assertEqual(captured["unresolved_key_questions"], [
+            {"question": "key gap", "value": .8, "stakes": None,
+             "gap_reason": "not discoverable"},
+        ])
+
+    def test_validate_selection_default_responder_cfg_does_not_gain_bucketing_keys(self):
+        self._patch([[q("gap", .8)]])
+        captured = {}
+
+        def responder(problem, evidence, cfg):
+            captured.update(cfg)
+            return "response"
+
+        iterate.validate_selection(
+            "p", "top", 1, cfg={"key_gap_threshold": .4},
+            answerer=notfound_answerer, responder=responder)
+        self.assertNotIn("tombstones", captured)
+        self.assertNotIn("unresolved_key_questions", captured)
+
     # ── seed evidence (relentless-solve prerequisite) ──
     def test_seed_evidence_reaches_rank_and_responder(self):
         self._patch([[q("a", .9)], []])
@@ -795,6 +827,16 @@ class AssumptionLedger(unittest.TestCase):
 
     @unittest.skipUnless(getattr(answerer, "_HAVE_ASK", False),
                          "model_utils (ask skill) not importable")
+    def test_respond_default_branch_includes_no_tools_note(self):
+        cfg = dict(iterate.DEFAULTS)
+        ds = mock.MagicMock(return_value={"content": "response", "error": None})
+        with mock.patch.object(answerer, "dispatch_single", ds), \
+             mock.patch.object(answerer, "resolve_alias", lambda m: m):
+            answerer.respond("task", ["fact"], cfg)
+        self.assertIn(answerer._NO_TOOLS_NOTE, ds.call_args[0][1])
+
+    @unittest.skipUnless(getattr(answerer, "_HAVE_ASK", False),
+                         "model_utils (ask skill) not importable")
     def test_respond_without_markers_preserves_prompt_bytes(self):
         cfg = dict(iterate.DEFAULTS)
         problem = "Build the thing"
@@ -805,7 +847,8 @@ class AssumptionLedger(unittest.TestCase):
                     f"<established_facts_and_known_gaps>\n{facts}\n"
                     "</established_facts_and_known_gaps>\n\n"
                     f"Produce the best possible response to the task using what's established. "
-                    f"State any assumptions you make for unresolved gaps. Be direct and useful.")
+                    f"State any assumptions you make for unresolved gaps. Be direct and useful."
+                    f"\n\n{answerer._NO_TOOLS_NOTE}")
         ds = mock.MagicMock(return_value={"content": "response", "error": None})
         with mock.patch.object(answerer, "dispatch_single", ds), \
              mock.patch.object(answerer, "resolve_alias", lambda m: m):
@@ -832,7 +875,8 @@ class StakesAwareRespond(unittest.TestCase):
                     f"<established_facts_and_known_gaps>\n{facts}\n"
                     "</established_facts_and_known_gaps>\n\n"
                     f"Produce the best possible response to the task using what's established. "
-                    f"State any assumptions you make for unresolved gaps. Be direct and useful.")
+                    f"State any assumptions you make for unresolved gaps. Be direct and useful."
+                    f"\n\n{answerer._NO_TOOLS_NOTE}")
         self.assertEqual(self._respond_prompt(problem, evidence, cfg), expected)
 
     def test_on_buckets_established_minor_and_key_gaps(self):
@@ -857,6 +901,17 @@ class StakesAwareRespond(unittest.TestCase):
         self.assertIn("Which deployment target?", prompt)
         self.assertIn("Material risks — assumptions to confirm", prompt)
         self.assertIn("Caller seed fact", prompt)
+
+    def test_on_includes_no_tools_note(self):
+        answered = iterate._tombstone(q("Which stack?", .9), True, "Python")
+        cfg = {
+            **iterate.DEFAULTS,
+            "stakes_aware_respond": True,
+            "tombstones": [answered],
+            "unresolved_key_questions": [],
+        }
+        prompt = self._respond_prompt("Build the thing", ["Caller seed fact"], cfg)
+        self.assertIn(answerer._NO_TOOLS_NOTE, prompt)
 
     def test_on_without_key_gaps_omits_risk_framing(self):
         answered = iterate._tombstone(q("Which stack?", .9), True, "Python")
@@ -1343,6 +1398,13 @@ class GroundedAnswer(unittest.TestCase):
         self.assertEqual(ds.call_args[0][3], cfg["answer_toolsets"])
         self.assertNotIn("terminal", ds.call_args[0][3])
 
+    def test_grounded_answer_prompt_does_not_include_no_tools_note(self):
+        cfg = self._cfg()
+        ds = mock.MagicMock(return_value={"content": "The stack is Python.", "error": None})
+        found, _ = self._call(ds, "What's the stack?", cfg)
+        self.assertTrue(found)
+        self.assertNotIn(answerer._NO_TOOLS_NOTE, ds.call_args[0][1])
+
     def test_not_found_parsed_and_act_has_no_directive(self):
         cfg = self._cfg()  # act default -> empty directive, full toolsets
         ds = mock.MagicMock(return_value={"content": "NOT_FOUND: no credentials available", "error": None})
@@ -1511,6 +1573,13 @@ class AnswererHardening(unittest.TestCase):
                         "task", [q("What version?", .8)], [], self._cfg())
                 self.assertEqual(routes, {})
 
+    def test_triage_prompt_includes_no_tools_note(self):
+        dispatch, dispatch_patch, alias_patch = self._patched({
+            "content": '[{"i": 1, "route": "FINDABLE"}]', "error": None})
+        with dispatch_patch, alias_patch:
+            answerer.triage_batch("task", [q("What version?", .8)], [], self._cfg())
+        self.assertIn(answerer._NO_TOOLS_NOTE, dispatch.call_args.args[1])
+
     def test_refine_prompt_instructions_cover_assumptions_and_open_questions(self):
         for evidence, expects_open_questions in (
                 (["stack -> Python"], False),
@@ -1525,6 +1594,12 @@ class AnswererHardening(unittest.TestCase):
                     self.assertIn("## Open questions", prompt)
                 else:
                     self.assertNotIn("## Open questions", prompt)
+
+    def test_refine_prompt_includes_no_tools_note(self):
+        dispatch, dispatch_patch, alias_patch = self._patched()
+        with dispatch_patch, alias_patch:
+            answerer.refine_prompt("task", ["fact"], self._cfg())
+        self.assertIn(answerer._NO_TOOLS_NOTE, dispatch.call_args.args[1])
 
     def test_refine_prompt_dispatch_error_returns_sentinel(self):
         dispatch, dispatch_patch, alias_patch = self._patched({
@@ -1542,6 +1617,15 @@ class AnswererHardening(unittest.TestCase):
         with dispatch_patch, alias_patch:
             result = answerer.judgment_call("format?", "task", [], self._cfg())
         self.assertEqual(result, (True, "use JSON", "standard"))
+
+    def test_judgment_call_prompt_includes_no_tools_note(self):
+        dispatch, dispatch_patch, alias_patch = self._patched({
+            "content": '{"decision": "use JSON", "rationale": "standard"}',
+            "error": None,
+        })
+        with dispatch_patch, alias_patch:
+            answerer.judgment_call("format?", "task", [], self._cfg())
+        self.assertIn(answerer._NO_TOOLS_NOTE, dispatch.call_args.args[1])
 
     def test_disguised_judgment_abstention_is_rejected(self):
         dispatch, dispatch_patch, alias_patch = self._patched({

@@ -1,0 +1,42 @@
+{
+  "rows": [
+    {
+      "prompt": "whatsapp-send",
+      "cat": "comms-send",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "Will this deployment cause any downtime or require team members to take specific actions?"
+      ],
+      "values": [
+        0.535
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "Will this deployment cause any downtime or require team members to take specific actions?",
+          "status": "ANSWERED",
+          "fact": "The task refers to \"the deploy\" but there's no deployment configuration, script, or plan anywhere in this repo that I can inspect to answer the question \u2014 the only deploy-related references are a Dockerfile and logging keywords, not a deployment runbook or change description.\n\nNOT_FOUND: No deployment plan, runbook, or deploy context exists in this repo \u2014 \"the deploy\" is referenced only in the user task with no associated artifact, so downtime impact and required team actions cannot be determined.",
+          "evidence": "Will this deployment cause any downtime or require team members to take specific actions? -> The task refers to \"the deploy\" but there's no deployment configuration, script, or plan anywhere in this repo that I can inspect to answer the question \u2014 the only deploy-related references are a Dockerfile and logging keywords, not a deployment runbook or change description.\n\nNOT_FOUND: No deployment plan, runbook, or deploy context exists in this repo \u2014 \"the deploy\" is referenced only in the user task with no associated artifact, so downtime impact and required team actions cannot be determined.",
+          "via": "research",
+          "value": 0.5349377554325735,
+          "stakes": 0.9,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1044,
+      "stakes_on_len": 1123,
+      "stakes_off_final": "The WhatsApp bridge is online and connected. The blocker isn't the delivery channel \u2014 it's the content. There is no deployment plan, runbook, or deploy artifact anywhere in this repo that I can find, so I can't tell the team what's deploying, whether there's downtime, or what actions they need to take.\n\nI need two things from you to send a useful message:\n\n1. **What is \"the deploy\"?** \u2014 Is this a Hermes Agent image update, a gateway config change, a WhatsApp bridge re-pair, an overlay rebuild, or something else entirely? Even one line of context (what changed, when it ships) lets me draft the message body.\n\n2. **Which team group?** \u2014 I see three known WhatsApp group IDs in the skill notes:\n   - `120363426893630875@g.us` \u2014 USAW TO Changes (meet coordination)\n   - `120363409212843238@g.us` \u2014 Jim's home/personal channel\n   - `120363408898559658@g.us` \u2014 Kelly's group\n\n   Which one is your \"team\"? Or is it a different group entirely?\n\nOnce I have those, I'll draft the message, confirm the wording with you, and send it via the bridge.",
+      "stakes_on_final": "I can't send this message. Here's why:\n\n**No deploy context exists in the repo.** I searched for deployment plans, runbooks, scripts, or change descriptions \u2014 the only deploy-related references are a Dockerfile and logging keywords. There's no artifact that tells me:\n\n- What was deployed (service, version, scope)\n- Whether it causes downtime\n- What actions the team needs to take\n- Which team members to message\n\nI won't fabricate a deployment message and send it to real people on WhatsApp \u2014 that's an irreversible external action with no factual basis.\n\n**To proceed, I need from you:**\n\n1. **What deployed** \u2014 which service/repo and what changed (feature, hotfix, infra change)\n2. **Downtime impact** \u2014 any expected disruption, or \"no downtime\"\n3. **Team actions needed** \u2014 do they need to do anything, or is it informational\n4. **Who to message** \u2014 a specific WhatsApp group or individual contacts\n\nOnce you give me those details I'll draft the message for your review and send it via the WhatsApp gateway.\n\nAlternatively, if you just want a generic heads-up template you can fill in, say the word and I'll write one."
+    }
+  ],
+  "elapsed_s": 55.6
+}

@@ -228,6 +228,34 @@ def _tombstone(q, found, text, via="research", rationale=None):
     return tomb
 
 
+def _unresolved_key_questions(tombstones, cfg):
+    """Build the ranked, deduplicated key-gap context for a stakes-aware responder."""
+    gaps = [t for t in tombstones if t["status"] == "NOT_FOUND"]
+
+    def gap_value(tomb):
+        value = tomb.get("value", None)
+        return value if value is not None else 0.0
+
+    ranked_gaps = sorted(gaps, key=gap_value, reverse=True)
+    surfaced_gaps = [t for t in ranked_gaps if gap_value(t) >= cfg["key_gap_threshold"]]
+    if ranked_gaps and gap_value(ranked_gaps[0]) < cfg["key_gap_threshold"]:
+        surfaced_gaps.append(ranked_gaps[0])
+    unresolved_key_questions = []
+    seen_gap_questions = set()
+    for tomb in sorted(surfaced_gaps, key=gap_value, reverse=True):
+        question = tomb.get("question", None)
+        if question in seen_gap_questions:
+            continue
+        seen_gap_questions.add(question)
+        unresolved_key_questions.append({
+            "question": question,
+            "value": tomb.get("value", None),
+            "stakes": tomb.get("stakes", None),
+            "gap_reason": tomb.get("fact", None),
+        })
+    return unresolved_key_questions
+
+
 # ── the loop ──────────────────────────────────────────────────────────────────
 
 # The converged stop_reason vocabulary. Exported: relentless-solve's information-dry
@@ -329,29 +357,7 @@ def iterate(problem, cfg=None, answerer=None, responder=None, progress=None, see
         stop_reason = "max_rounds reached"
 
     evidence_final = seeds + [t.get("evidence", "") for t in tombstones]
-    gaps = [t for t in tombstones if t["status"] == "NOT_FOUND"]
-
-    def gap_value(tomb):
-        value = tomb.get("value", None)
-        return value if value is not None else 0.0
-
-    ranked_gaps = sorted(gaps, key=gap_value, reverse=True)
-    surfaced_gaps = [t for t in ranked_gaps if gap_value(t) >= cfg["key_gap_threshold"]]
-    if ranked_gaps and gap_value(ranked_gaps[0]) < cfg["key_gap_threshold"]:
-        surfaced_gaps.append(ranked_gaps[0])
-    unresolved_key_questions = []
-    seen_gap_questions = set()
-    for tomb in sorted(surfaced_gaps, key=gap_value, reverse=True):
-        question = tomb.get("question", None)
-        if question in seen_gap_questions:
-            continue
-        seen_gap_questions.add(question)
-        unresolved_key_questions.append({
-            "question": question,
-            "value": tomb.get("value", None),
-            "stakes": tomb.get("stakes", None),
-            "gap_reason": tomb.get("fact", None),
-        })
+    unresolved_key_questions = _unresolved_key_questions(tombstones, cfg)
     output_mode = cfg.get("output", "response")
     refined_prompt = None
     final = None
@@ -417,9 +423,13 @@ def validate_selection(problem, which, k, cfg=None, answerer=None, responder=Non
         found, text = answerer(q, problem, evidence, cfg)
         tombstones.append(_tombstone(q, found, text))
         evidence = [t["evidence"] for t in tombstones]
+    unresolved_key_questions = _unresolved_key_questions(tombstones, cfg)
+    responder_cfg = ({**cfg, "tombstones": tombstones,
+                      "unresolved_key_questions": unresolved_key_questions}
+                     if cfg.get("stakes_aware_respond") else cfg)
     return {"which": which, "k": k, "selected": [q.get("question") for q in sel],
             "values": [round(q.get("value", 0), 3) for q in sel],
-            "final": responder(problem, evidence, cfg), "tombstones": tombstones}
+            "final": responder(problem, evidence, responder_cfg), "tombstones": tombstones}
 
 
 # ── mock answerer/responder for host-side loop testing (no hermes) ────────────

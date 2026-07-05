@@ -124,3 +124,12 @@ question the Investigator should:
 
 v1 records the vantage axis and investigates from the current vantage; multi-vantage comparison is a
 fast-follow (needs the Investigator to acquire/switch credentials, which is an `act`-level capability).
+
+## Source of truth / file layout
+
+This skill's canonical source is the `hermes-agent` repo (`skills/autonomous-ai-agents/investigator/`,
+fork `whichguy/hermes-agent-1`) — edit it here. `hermes-skills-marketplace` is a synced distribution
+snapshot (tests excluded, versions bumped on release) — not a source to edit directly. Other copies
+you may run across (`~/.hermes/skills/autonomous-ai-agents/investigator/` — the deploy tree the live
+container reads from, `~/src/hermes` — a no-remote staging mirror, `~/src/hsm-plan-review` — an
+incidental copy from another project) are deploy/staging artifacts, not sources of truth either.

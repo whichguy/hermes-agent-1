@@ -1,0 +1,658 @@
+{
+  "rows": [
+    {
+      "prompt": "whatsapp-send",
+      "cat": "comms-send",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-off",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-on",
+        "stakes-off"
+      ],
+      "judge_reasons": [
+        "Response A is more concise, avoids unnecessary template padding and redundant risk restatements, and directly asks for the three essential missing pieces without over-elaborating assumptions.",
+        "Response A provides a concrete draft template and actionable next steps, while B merely restates the lack of tools and asks questions without offering a usable message structure.",
+        "Response A is more concise, directly asks for the three essential missing pieces without padding, and avoids the unnecessary template and redundant risk restatements that make B feel over-scoped and verbose."
+      ],
+      "selected": [
+        "What is the estimated timeframe or schedule for this deployment?"
+      ],
+      "values": [
+        0.65
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What is the estimated timeframe or schedule for this deployment?",
+          "value": 0.6498986707480363,
+          "stakes": 0.9,
+          "gap_reason": "The task \"send a WhatsApp message to my team about the deploy\" references a deployment, but no specific deployment event, schedule, or timeframe is documented in any project, kanban board, calendar, or file in this environment. Without a kanban board, deployment ticket, or calendar entry identifying which deployment is meant, there's no estimated timeframe to report."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What is the estimated timeframe or schedule for this deployment?",
+          "status": "NOT_FOUND",
+          "fact": "The task \"send a WhatsApp message to my team about the deploy\" references a deployment, but no specific deployment event, schedule, or timeframe is documented in any project, kanban board, calendar, or file in this environment. Without a kanban board, deployment ticket, or calendar entry identifying which deployment is meant, there's no estimated timeframe to report.",
+          "evidence": "What is the estimated timeframe or schedule for this deployment? -> (known gap: The task \"send a WhatsApp message to my team about the deploy\" references a deployment, but no specific deployment event, schedule, or timeframe is documented in any project, kanban board, calendar, or file in this environment. Without a kanban board, deployment ticket, or calendar entry identifying which deployment is meant, there's no estimated timeframe to report.)",
+          "via": "research",
+          "value": 0.6498986707480363,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 1235,
+      "stakes_on_len": 2170,
+      "stakes_off_final": "I can't send that WhatsApp message \u2014 this call has no tools available, so I have no way to reach the WhatsApp gateway, and there's no documented deployment event, schedule, or timeframe in this environment to reference.\n\nTo actually send this, I'd need:\n\n1. **Which deployment** \u2014 there's no deployment ticket, kanban board entry, calendar event, or project file identifying what deploy you mean. I need a specific deploy (service, version, environment) to write about.\n\n2. **What to say about it** \u2014 \"about the deploy\" could mean a heads-up before, a status during, or a completion notice after. Each is a different message. Do you want to announce it's starting, report it's live, flag an issue, or something else?\n\n3. **Who \"my team\" is** \u2014 a specific WhatsApp group chat or individual contacts. I need the group name or contact list to target the right audience.\n\nIf you give me those three things, the next session with tools active can compose and send the message through the Hermes WhatsApp gateway (Baileys) to the right group/chat.\n\n**Assumption made:** No deployment details exist in any accessible system, so I'm not guessing at content, timing, or recipients \u2014 fabricating a deploy announcement would be worse than asking.",
+      "stakes_on_final": "I can't send a WhatsApp message from this context \u2014 no messaging tools are available in this call. Here's what I can do instead, and what I'd need to actually send it.\n\n**Assumption I'm proceeding on:** There's a deployment that has happened or is about to happen, and \"the team\" refers to a WhatsApp group or contacts you normally message about deploys. Since no deployment event, schedule, or details are documented anywhere in this environment, I have no specifics to include (what was deployed, when, status, impact).\n\n**What I'd need from you to actually send this:**\n\n1. **Deployment details** \u2014 what service/app is being deployed, the environment (prod/staging), a timeframe or status (kicked off / completed / failed / scheduled for X time), and anything notable (downtime, breaking changes, rollback needed).\n2. **Recipient** \u2014 the WhatsApp group name or contact(s). If it's an existing group you've messaged before, I can look it up in your known channels once tools are available.\n3. **Tone** \u2014 quick heads-up, formal status report, or something in between.\n\n**Draft template I'd send once I have the above:**\n\n> \ud83d\ude80 Deploy update \u2014 [service] to [environment]\n> Status: [in progress / complete / scheduled for HH:MM TZ]\n> What changed: [summary]\n> Notes: [downtime / breaking changes / rollback / all clear]\n> Next: [next step or \"no action needed\"]\n\n**Material risks \u2014 assumptions to confirm:**\n\n- **Assumption:** A specific deployment exists that this message refers to. Risk: if no deploy is actually planned or in progress, sending a message would be premature or confusing to the team.\n- **Assumption:** \"My team\" maps to a WhatsApp group or contact list already reachable from your Hermes WhatsApp gateway. Risk: if the recipient isn't configured as a gateway channel, I won't be able to send without you providing the exact phone number or group ID.\n- **Assumption:** The message should go out now (or imminently). Risk: if the deploy is scheduled for later, sending immediately may needlessly alert the team before there's anything to act on.\n\nGive me the deployment details and confirm the recipient, and I'll send the message via the WhatsApp gateway."
+    },
+    {
+      "prompt": "slack-announce",
+      "cat": "comms-send",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A correctly refuses to fabricate assumptions and directly asks for the three missing pieces of information needed to complete the task, while Response B pads the response with a generic template based on unconfirmed assumptions.",
+        "Response A provides a ready-to-use draft template and actionable next steps, while B only lists requirements without offering immediate value.",
+        "B provides a ready-to-use draft template and actionable next steps, while A only lists missing information without offering a concrete starting point."
+      ],
+      "selected": [
+        "Who is the intended audience for this announcement (e.g., engineering, sales, entire company)?"
+      ],
+      "values": [
+        0.425
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "Who is the intended audience for this announcement (e.g., engineering, sales, entire company)?",
+          "value": 0.4246698535384019,
+          "stakes": 0.8,
+          "gap_reason": "No specific \"new feature launch\" context exists in this session or workspace \u2014 the task references an announcement but there is no artifact, release notes, feature description, or audience metadata to determine who the intended audience is. The \"right Slack channel\" and target audience would need to be specified by the user."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "Who is the intended audience for this announcement (e.g., engineering, sales, entire company)?",
+          "status": "NOT_FOUND",
+          "fact": "No specific \"new feature launch\" context exists in this session or workspace \u2014 the task references an announcement but there is no artifact, release notes, feature description, or audience metadata to determine who the intended audience is. The \"right Slack channel\" and target audience would need to be specified by the user.",
+          "evidence": "Who is the intended audience for this announcement (e.g., engineering, sales, entire company)? -> (known gap: No specific \"new feature launch\" context exists in this session or workspace \u2014 the task references an announcement but there is no artifact, release notes, feature description, or audience metadata to determine who the intended audience is. The \"right Slack channel\" and target audience would need to be specified by the user.)",
+          "via": "research",
+          "value": 0.4246698535384019,
+          "stakes": 0.8,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1057,
+      "stakes_on_len": 2270,
+      "stakes_off_final": "I can't complete this task as stated. Here's why:\n\n**No feature to announce.** There's no artifact, release notes, feature description, or any other context in this session that identifies what \"new feature\" launched. Without knowing what the feature is, I can't draft a meaningful announcement.\n\n**No channel or audience specified.** \"The right Slack channel\" is circular \u2014 it requires knowing the feature's scope and intended audience, neither of which exist in the workspace.\n\n**No tools available.** Even if I had the content, this call has no tool access \u2014 I can't post to Slack or any other channel.\n\n---\n\n**To move forward, I need from you:**\n\n1. **What feature launched?** \u2014 name, one-line summary, link to release notes or a spec\n2. **Who's the audience?** \u2014 engineering team, all-staff, a specific product/sales group, external customers, etc.\n3. **Which Slack workspace/channel?** \u2014 or tell me the convention you use and I'll infer it\n\nOnce I have those, I can draft the announcement copy and route it through the Hermes Slack gateway to post it.",
+      "stakes_on_final": "I can't post to Slack from this call \u2014 no tools are available, and there's no feature description, audience, or channel mapping in the context. Rather than fabricate a \"posted successfully\" claim, here's what I can do: draft the announcement message so it's ready to drop into the right channel the moment you confirm the details.\n\n---\n\nAssumption I'm proceeding on: the feature is a product/engineering launch intended for a general company-wide audience (the broadest reasonable default), and the \"right channel\" is a company-wide or product-announcements channel (e.g., `#product-launches`, `#company-announcements`, or `#general`). I'm also assuming a typical SaaS feature launch shape \u2014 if you tell me the actual feature, I'll rewrite the body.\n\n---\n\nDraft announcement (ready to post):\n\n```\n\ud83d\ude80 New feature launched: [Feature Name]\n\nWhat it does: [One-sentence description of the capability and the user problem it solves.]\n\nWhy it matters: [One line on the outcome \u2014 time saved, workflow unlocked, error reduced, etc.]\n\nHow to start: [Link to docs / changelog / in-app onboarding, or \"Available now in [product area].\"]\n\nQuestions or feedback: Drop them in [channel or thread]. We'd love to hear how you're using it.\n\n\u2014 [Team / your name]\n```\n\n---\n\nMaterial risks \u2014 assumptions to confirm\n\n- Audience assumed: company-wide (general). If the feature is internal-only (engineering, sales enablement, beta cohort), the channel and tone change \u2014 e.g., `#engineering` for an infra tool vs. `#sales` for a CRM enhancement vs. a private beta channel for early access.\n- Channel assumed: `#product-launches` or equivalent. I don't have your Slack workspace's channel map, so I can't verify the \"right\" channel exists or name it exactly.\n- Feature details assumed: generic launch template. The announcement has zero specificity until you provide the feature name, what it does, why it matters, and a docs link \u2014 without those, any message I draft is a skeleton, not a real announcement.\n- Posting: this call cannot send messages. To actually post, I need tool access (Slack API or gateway) plus the confirmed channel and message body. If you reply with the feature details and target audience, I'll finalize the message and post it on the next turn when tools are available."
+    },
+    {
+      "prompt": "add-auth",
+      "cat": "code-feature",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "Do you want to implement custom authentication logic from scratch, or integrate a managed third-party identity provider (e.g., Auth0, Firebase Auth, AWS Cognito)?"
+      ],
+      "values": [
+        0.513
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "Do you want to implement custom authentication logic from scratch, or integrate a managed third-party identity provider (e.g., Auth0, Firebase Auth, AWS Cognito)?",
+          "status": "ANSWERED",
+          "fact": "I searched the workspace at `/opt/hermes` and found no web app \u2014 no app/server files, no framework manifests, and no existing auth/session/JWT/OAuth code or config.\n\nNOT_FOUND: No web app was found in the workspace \u2014 there is no codebase, framework manifest, or existing auth-related code to infer a preference from. Please point me to the app's location, and let me know whether you'd like custom-built or a managed provider (Auth0/Firebase/Cognito); I'll then implement it.",
+          "evidence": "Do you want to implement custom authentication logic from scratch, or integrate a managed third-party identity provider (e.g., Auth0, Firebase Auth, AWS Cognito)? -> I searched the workspace at `/opt/hermes` and found no web app \u2014 no app/server files, no framework manifests, and no existing auth/session/JWT/OAuth code or config.\n\nNOT_FOUND: No web app was found in the workspace \u2014 there is no codebase, framework manifest, or existing auth-related code to infer a preference from. Please point me to the app's location, and let me know whether you'd like custom-built or a managed provider (Auth0/Firebase/Cognito); I'll then implement it.",
+          "via": "research",
+          "value": 0.512891281871903,
+          "stakes": 0.8,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 2186,
+      "stakes_on_len": 1054,
+      "stakes_off_final": "I can't add authentication yet \u2014 I don't have a web app to add it to. The workspace at `/opt/hermes` has no application code, no framework manifest, and no existing auth/session/JWT/OAuth code. There's nothing to integrate into.\n\nI need two things from you before I can proceed:\n\n1. **App location** \u2014 the path to your web app's codebase (or a repo URL to clone).\n2. **Auth strategy** \u2014 custom-built or a managed provider. Quick comparison to help you decide:\n\n   | Approach | Best when | Trade-offs |\n   |---|---|---|\n   | **Managed (Auth0, Firebase Auth, AWS Cognito)** | You want auth working fast and don't want to manage passwords, sessions, MFA, or social login. | Adds a dependency, possible per-user cost, vendor lock-in. |\n   | **Custom (your own JWT/session logic)** | You need full control, have compliance constraints, or the app already has a backend with a database. | You own password hashing, token rotation, session invalidation, and security \u2014 more surface area for mistakes. |\n\n**Assumptions I'll make if you don't specify otherwise:**\n\n- If you point me to a Python/Flask/FastAPI app, I'll default to JWT-based auth with `python-jose` + `passlib` (bcrypt), unless the app already has a session mechanism.\n- If you point me to a Node/Express app, I'll default to `passport` + `express-session` with JWT or session cookies depending on existing middleware.\n- If there's a database, I'll add a `users` table/model with hashed passwords and a `/login` + `/register` flow with refresh tokens.\n- I'll always follow the codebase's existing patterns and conventions rather than imposing a new style.\n\n**What I'll do once you provide the path and choice:**\n\n1. Read the app's entry point, existing middleware, and data models.\n2. Check for any existing auth-adjacent code (session middleware, user models, API keys).\n3. Implement the chosen strategy end-to-end \u2014 registration, login, token issuance, protected route middleware, and logout.\n4. Run the app's test suite to verify nothing breaks, and add auth-specific tests.\n5. Leave secrets (`.env`, keys) untouched and note where you need to set them.\n\nPoint me to the app and tell me custom or managed, and I'll get it done.",
+      "stakes_on_final": "I searched the workspace at `/opt/hermes` and there's no web app there \u2014 no server files, no framework manifests (no `package.json`, `requirements.txt`, `go.mod`, etc. for a web app), and no existing auth/session/JWT/OAuth code or config to build on.\n\nTo move forward I need two things from you:\n\n1. **Where is the app?** Give me the path to your web app's codebase. It's not under `/opt/hermes`.\n\n2. **Custom or managed auth?** Here's the tradeoff:\n\n   - **Managed provider** (Auth0, Firebase Auth, AWS Cognito, Clerk) \u2014 fastest to integrate, handles sessions/tokens/password reset/MFA for you, but adds an external dependency and possible cost at scale.\n   - **Custom-built** (JWT sessions, OAuth2 social login, password + bcrypt) \u2014 full control, no external dependency, but you own security correctness, token rotation, CSRF, and password reset flows.\n\nTell me the app location and which direction you prefer (or let me know the framework \u2014 Express, FastAPI, Next.js, etc. \u2014 and I'll recommend the best-fit approach), and I'll implement it end to end."
+    },
+    {
+      "prompt": "deploy-app",
+      "cat": "devops",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A provides a more structured, actionable information-gathering framework with explicit next steps and risk assessment, while B redundantly emphasizes tool limitations and makes unwarranted assumptions about the app's identity.",
+        "Response B is more direct, avoids redundant tool-limitation padding, and correctly identifies the critical missing information without over-explaining assumptions it would make if it could act.",
+        "Response A provides a more structured, actionable information-gathering framework with explicit next steps and risk assessment, while B redundantly emphasizes tool limitations and makes unwarranted assumptions about the app's identity."
+      ],
+      "selected": [
+        "What level of downtime, if any, is acceptable during this deployment window?"
+      ],
+      "values": [
+        0.652
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What level of downtime, if any, is acceptable during this deployment window?",
+          "value": 0.65197208435372,
+          "stakes": 0.9,
+          "gap_reason": "No app deployment configuration, SLA, maintenance-window policy, or deployment runbook exists in this workspace or session context to indicate an acceptable downtime level."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What level of downtime, if any, is acceptable during this deployment window?",
+          "status": "NOT_FOUND",
+          "fact": "No app deployment configuration, SLA, maintenance-window policy, or deployment runbook exists in this workspace or session context to indicate an acceptable downtime level.",
+          "evidence": "What level of downtime, if any, is acceptable during this deployment window? -> (known gap: No app deployment configuration, SLA, maintenance-window policy, or deployment runbook exists in this workspace or session context to indicate an acceptable downtime level.)",
+          "via": "research",
+          "value": 0.65197208435372,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 1802,
+      "stakes_on_len": 3273,
+      "stakes_off_final": "I can't deploy your app from here \u2014 this session has no tools available (no terminal, no file access, no API calls), so I can't run deploy commands, check the repo, or verify anything. I also can't confirm completion of an action I didn't perform.\n\nBeyond the tool limitation, there's an unresolved gap that needs your input before a real deployment could proceed:\n\n**Acceptable downtime** \u2014 The established facts note no deployment config, SLA, maintenance-window policy, or runbook exists in this workspace. I have no way to know whether zero-downtime (blue/green or rolling) is required, or whether a brief maintenance window is acceptable.\n\n**Assumptions I'd make if I could act:**\n- The app lives in this repo (/opt/hermes, a Hermes Agent workspace) \u2014 but \"your app\" is ambiguous. I'd need you to confirm which app/repo to deploy, since this workspace is the Hermes Agent codebase itself, and deploying Hermes core is a very different operation than deploying a user project.\n- Deployment target (production vs staging) is unspecified \u2014 I'd default to staging for safety, but you said \"deploy the latest version\" which sounds like production intent.\n- \"Latest version\" \u2014 I'd interpret this as the latest commit on the default branch, not a specific tag/release.\n\n**What's needed to actually do this:**\n1. Confirm which app and repo (is it Hermes core, or a separate project?).\n2. Confirm the target environment (staging vs production).\n3. Confirm the acceptable downtime level \u2014 or point me to the deployment runbook/SLA if one exists outside this workspace.\n4. Whether you want me to run this in a session with tools enabled (terminal, file access) \u2014 that's the hard blocker right now.\n\nIf you can reply with those four answers and re-run this in a tool-enabled session, I can take it from there.",
+      "stakes_on_final": "# Deploying the latest version of your app \u2014 assessment\n\nI cannot perform this deployment. I have no tools available in this call, and more fundamentally, the workspace and session context contain no record of what \"your app\" is, where it deploys, or how it gets deployed. Deploying blind would risk downtime, data loss, or a broken release with no rollback path. I'm not going to fabricate a completion.\n\n## What's missing\n\nI searched the established context and found no deployment configuration, CI/CD pipeline, runbook, SLA, maintenance-window policy, or any artifact that names a deployable app and its target environment. Concretely, I need answers to these before I can act:\n\n1. **What is \"your app\"?** A service name, a repo path, a container image, a function \u2014 something I can identify unambiguously. This workspace is the Hermes Agent codebase (`/opt/hermes`), but I have no evidence that is the app you mean.\n2. **Where does it deploy?** A host, a Kubernetes namespace, a cloud account, a PaaS target (Fly, Railway, Render), a static-site bucket, etc.\n3. **How is it deployed today?** An existing command (`make deploy`, `fly deploy`, `kubectl rollout`, `docker compose up -d`, a GitHub Action), a script, or a runbook. If one exists, point me at it and I'll run it. If none exists, this becomes a setup task, not a deploy task.\n4. **What is \"the latest version\"?** `main`/`master` HEAD, a git tag, a version number, a Docker image tag, or a published package version.\n5. **What's the rollback plan?** The previous image/tag, a database migration to revert, a feature flag. Without this I'd be deploying without a safety net.\n\n## Assumption I'm proceeding on\n\nFor the one unresolved key question on record \u2014 acceptable downtime:\n\nI assume **near-zero downtime is required** (blue/green, rolling, or canary deployment), because no SLA or maintenance-window policy is documented. If you actually have an accepted downtime window, tell me and I'll use a simpler atomic cutover instead.\n\nI am **not** proceeding on assumptions for items 1\u20134 above. Those are not gaps I can paper over \u2014 guessing the wrong app or wrong target would cause real damage.\n\n## What I'll do once I have the information\n\nOnce you confirm what/where/how/version, I will:\n\n1. Verify the latest version is built and tests pass (`scripts/run_tests.sh` / pytest \u2014 these exist in the workspace).\n2. Run the existing deploy command or execute the deployment steps you specify.\n3. Confirm the new version is live via a health check or version endpoint.\n4. Report the outcome with the rollback handle, so you have a safety net if something is wrong.\n\n---\n\n### Material risks \u2014 assumptions to confirm\n\n- **Downtime tolerance:** Proceeding on the assumption that near-zero downtime is required (no SLA documented). If a maintenance window is acceptable, a faster atomic cutover may be simpler and safer than orchestrating rolling deploys.\n- **All other prerequisites (app identity, deploy target, deploy mechanism, version to ship, rollback path):** No assumption made. These must be confirmed before any deployment action. Without them, any \"deploy\" I claim would be fabricated.\n\nGive me the app name, the deploy target, and the deploy command (or point me at a runbook), and I'll take it from there."
+    },
+    {
+      "prompt": "portfolio-check",
+      "cat": "finance",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": true,
+      "mechanical_pass": false,
+      "has_section": false,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response B provides a comprehensive, actionable self-review checklist with specific thresholds and flags, directly addressing the user's likely need to evaluate their portfolio independently, while Response A merely lists what it could do with data.",
+        "Response A provides a comprehensive, actionable self-review checklist with specific thresholds and tax-location rules, directly addressing the user's likely need for immediate guidance, whereas B merely restates the lack of access and offers a vaguer list of future services.",
+        "Response B provides an immediately actionable self-review checklist while A only lists what it could do later, better serving a user who may want to start evaluating their portfolio right now without sharing data."
+      ],
+      "selected": [
+        "What are the tax implications and account types (e.g., taxable, tax-advantaged, retirement) for these investments?"
+      ],
+      "values": [
+        0.774
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What are the tax implications and account types (e.g., taxable, tax-advantaged, retirement) for these investments?",
+          "value": 0.7737175945775054,
+          "stakes": 0.9,
+          "gap_reason": "I have no access to your brokerage or financial account data, and you haven't provided any holdings, account types, or statements for me to analyze. To flag portfolio concerns and assess tax treatment, I'd need you to share your holdings (e.g., tickers, account types like taxable/tax-advantaged/retirement, and cost basis) or grant read access to a financial data source."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What are the tax implications and account types (e.g., taxable, tax-advantaged, retirement) for these investments?",
+          "status": "NOT_FOUND",
+          "fact": "I have no access to your brokerage or financial account data, and you haven't provided any holdings, account types, or statements for me to analyze. To flag portfolio concerns and assess tax treatment, I'd need you to share your holdings (e.g., tickers, account types like taxable/tax-advantaged/retirement, and cost basis) or grant read access to a financial data source.",
+          "evidence": "What are the tax implications and account types (e.g., taxable, tax-advantaged, retirement) for these investments? -> (known gap: I have no access to your brokerage or financial account data, and you haven't provided any holdings, account types, or statements for me to analyze. To flag portfolio concerns and assess tax treatment, I'd need you to share your holdings (e.g., tickers, account types like taxable/tax-advantaged/retirement, and cost basis) or grant read access to a financial data source.)",
+          "via": "research",
+          "value": 0.7737175945775054,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 1667,
+      "stakes_on_len": 4253,
+      "stakes_off_final": "I can't check your portfolio right now \u2014 I have no access to your brokerage or financial accounts, and you haven't shared any holdings, account types, or statements in this conversation. There's nothing for me to analyze or flag.\n\nTo do this properly, I'd need one of the following:\n\n1. **Holdings data** \u2014 tickers, share counts, cost basis, and account type for each position (taxable, IRA, 401k, Roth, etc.). You can paste a CSV, a screenshot of positions, or a summary.\n\n2. **Read access to a financial data source** \u2014 if you use a service with an API (e.g., Fidelity, Schwab, Plaid-connected accounts), I can look into whether there's a secure way to connect. I'd need your explicit go-ahead and credentials configured through the credential manager before touching anything.\n\n**Why account type matters:** the \"worry\" flags depend heavily on tax treatment. The same holding can be a non-issue in a Roth IRA but a tax-loss harvesting candidate in a taxable account. Without knowing which bucket each position sits in, any risk assessment would be guessing.\n\n**What I can do once I have the data:**\n- Flag concentration risk (single-stock or single-sector overweights)\n- Check for obvious overlaps (e.g., holding both VTI and VO that duplicate exposure)\n- Identify tax-inefficient placements (bonds/high-turnover funds in taxable accounts)\n- Flag positions with large unrealized losses (harvesting candidates) or gains (tax exposure)\n- Compare your allocation against a baseline for your risk tolerance and timeline\n- Note any positions I'd want to understand the thesis on (leveraged ETFs, single-name speculative bets, etc.)\n\nShare what you have and I'll dig in.",
+      "stakes_on_final": "I can't check your portfolio right now \u2014 I have no access to any brokerage, retirement, or financial account data, and you haven't shared any holdings for me to analyze. No tool access this turn either, so I can't pull from a connected source.\n\nProceeding on this assumption: you want a practical checklist of what to look for when you open your accounts yourself (or share the holdings with me for a deeper pass).\n\nWHAT TO FLAG WHEN YOU REVIEW YOUR PORTFOLIO\n\n1. Concentration risk\n   \u2014 Single-stock or single-sector overexposure (rule of thumb: no single position over 5-10% of total portfolio unless it's an intentional conviction bet).\n   \u2014 Employer stock / RSUs \u2014 if you hold a lot of your employer's stock, that's both job risk and investment risk stacked together.\n   \u2014 Crypto or alt-asset concentration beyond your risk tolerance.\n\n2. Diversification\n   \u2014 Domestic vs. international split \u2014 many US investors are 90%+ domestic without realizing it.\n   \u2014 Large-cap vs. small/mid-cap \u2014 market-weight (like VTI) already skews mega-cap; if you also hold QQQ or individual tech names, you're doubling down.\n   \u2014 Bonds/fixed income \u2014 do you have any ballast, or is it all equity?\n\n3. Tax-efficiency by account type\n   \u2014 Taxable account: hold tax-efficient assets (broad index ETFs) here. Avoid actively managed funds or REITs that throw off lots of ordinary income.\n   \u2014 Tax-advantaged (IRA/Roth/401k): this is where to hold tax-inefficient assets \u2014 REITs, high-turnover active funds, bond funds generating ordinary income.\n   \u2014 Bond funds in taxable? That's a common drag \u2014 interest taxed at your marginal rate every year.\n\n4. Cost drag\n   \u2014 Expense ratios above ~0.10% on index funds are worth questioning.\n   \u2014 Actively managed funds with high expense ratios + poor tracking vs. benchmark \u2014 prime sell candidates.\n   \u2014 AUM fees from an advisor on top of fund expense ratios (double drag).\n\n5. Drift and rebalancing\n   \u2014 Has a bull run pushed your equity allocation well above your target? If you're 70/30 target and sitting at 85/15, that's risk drift.\n   \u2014 When did you last rebalance? More than a year ago is worth a look.\n\n6. Behavioral / performance-chasing\n   \u2014 Recent hot thematic funds (AI, semis, energy) bought at peak \u2014 check cost basis vs. current price.\n   \u2014 Cash drag \u2014 are you sitting on an unusually high cash position waiting for a \"better entry\"? Time in market > timing.\n\n7. Retirement-specific\n   \u2014 Roth vs. traditional balance \u2014 do you have Roth assets for tax-free withdrawal flexibility in retirement?\n   \u2014 RMD exposure \u2014 if you have sizable traditional accounts, are you aware of future required minimum distributions?\n   \u2014 Beneficiaries up to date on all accounts?\n\n8. Emergency / liquidity\n   \u2014 Is your invested portfolio your only cushion, or do you have a separate cash emergency fund? Investments can drop 20-30% exactly when you might need to sell.\n\nHOW TO GET ME A REAL ANSWER\n\nShare any of these and I can do an actual analysis:\n\u2014 Holdings export (CSV from your brokerage \u2014 ticker, shares, cost basis, account type).\n\u2014 Or just paste your ticker list with account labels (taxable / Roth IRA / traditional 401k / etc.).\n\u2014 Screenshot of your allocation page works too.\n\nMATERIAL RISKS \u2014 ASSUMPTIONS TO CONFIRM\n\n1. Assumed: no portfolio data is available to me and you haven't connected a financial data source. If a brokerage API or financial MCP server IS configured and I missed it, let me know and I'll pull the data directly.\n2. Assumed: \"portfolio\" means investment holdings (stocks, funds, retirement accounts), not the broader sense of \"everything you own.\" If you want a net-worth-level review including real estate, business equity in Fortified Strength, cash, etc., that's a different scope \u2014 tell me.\n3. Assumed: you're a US-domiciled investor for tax purposes (your profile says San Ramon, CA). If that's changed, tax guidance above shifts.\n4. Assumed: no advisor relationship that already produces this kind of review \u2014 if you have one, their analysis should override generic checklist items.\n\nNone of the above is personalized investment advice for your specific situation \u2014 it's a framework to apply to your actual holdings. Share the data and I'll turn it into a concrete, position-by-position flag list."
+    },
+    {
+      "prompt": "buy-rent",
+      "cat": "life",
+      "k": 1,
+      "arm_tag": "key-gap",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "How do you value lifestyle flexibility versus housing stability and customization?"
+      ],
+      "values": [
+        0.73
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "How do you value lifestyle flexibility versus housing stability and customization?",
+          "status": "ANSWERED",
+          "fact": "Renting maximizes flexibility \u2014 easy relocation, no maintenance burden, predictable monthly costs \u2014 but you forfeit equity-building and the ability to customize your living space. Buying locks in housing stability, long-term cost certainty (fixed mortgage vs. rising rents), and full customization rights, but trades mobility and concentrates your net worth in one illiquid asset. The right call hinges on your time horizon: if you expect to stay 5+ years and value roots/customization, buy; if your career, family, or preferences may shift within that window, rent.",
+          "evidence": "How do you value lifestyle flexibility versus housing stability and customization? -> Renting maximizes flexibility \u2014 easy relocation, no maintenance burden, predictable monthly costs \u2014 but you forfeit equity-building and the ability to customize your living space. Buying locks in housing stability, long-term cost certainty (fixed mortgage vs. rising rents), and full customization rights, but trades mobility and concentrates your net worth in one illiquid asset. The right call hinges on your time horizon: if you expect to stay 5+ years and value roots/customization, buy; if your career, family, or preferences may shift within that window, rent.",
+          "via": "research",
+          "value": 0.7302841886756898,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 2001,
+      "stakes_on_len": 2377,
+      "stakes_off_final": "## Buy vs. Rent: The Core Decision\n\n**The hinge is your time horizon and what you value most.**\n\n**Buy if:**\n- You expect to stay 5+ years in one place\n- You value roots, stability, and the freedom to customize your living space\n- You want cost certainty \u2014 a fixed mortgage shields you from rising rents\n- You're comfortable concentrating a large chunk of your net worth in one illiquid asset\n\n**Rent if:**\n- Your career, family situation, or lifestyle preferences may shift within ~5 years\n- You prioritize flexibility and easy relocation\n- You want predictable monthly costs with no maintenance burden or surprise repair bills\n- You'd rather keep your capital liquid and diversified\n\n**Key trade-off:** Buying builds equity and locks in long-term housing costs, but it trades mobility and concentrates your wealth in one asset. Renting maximizes flexibility and keeps you liquid, but you forfeit equity-building and the ability to make the space truly yours.\n\n**Assumptions for gaps not covered above:**\n- This doesn't account for local market conditions (price-to-rent ratios, appreciation trends, interest rates) \u2014 in a high-cost market with modest appreciation, the math can favor renting longer than the 5-year rule suggests. A price-to-rent ratio above ~20 in your target area tilts toward renting; below ~15, buying becomes more attractive.\n- This doesn't factor in your current finances \u2014 down payment readiness, existing debt, tax situation, and whether you have an emergency fund separate from your home purchase all matter.\n- The 5-year threshold assumes typical transaction costs (closing costs, agent fees) that take roughly that long to amortize through equity accumulation.\n\n**Bottom line:** If you're confident you'll stay put for 5+ years and want stability and customization, buy. If you can't confidently commit to that window \u2014 or flexibility is a genuine priority \u2014 rent and invest the difference. The lifestyle question (roots vs. freedom) matters as much as the financial math.",
+      "stakes_on_final": "## Buy vs. Rent \u2014 The Decision Framework\n\nThe answer hinges on one primary variable: **how long you expect to stay put.**\n\n### Rent if your horizon is short or uncertain (< ~5 years)\n- **Flexibility** is the headline benefit \u2014 you can relocate for career, family, or lifestyle changes without selling an illiquid asset.\n- **No maintenance burden** \u2014 a broken water heater is the landlord's problem, not a surprise four-figure bill.\n- **Predictable monthly costs** \u2014 rent is a single number; owning brings property tax, insurance, HOA, repairs, and interest-rate exposure.\n- You give up equity-building and the right to customize your space.\n\n### Buy if you expect to stay 5+ years and value roots\n- **Housing stability** \u2014 no landlord can decide not to renew, and no rent hikes reset your cost floor each year.\n- **Long-term cost certainty** \u2014 a fixed mortgage payment stays flat while rents typically rise, so the gap widens in your favor over time.\n- **Full customization** \u2014 you control the space end to end.\n- The trade: reduced mobility and your net worth gets concentrated in one illiquid asset (your house).\n\n### Assumptions I'm making (no tool calls available to verify)\n- I can't pull your local price-to-rent ratio, current mortgage rates, property tax rates, or your specific financial picture \u2014 all of which materially shift the math. The 5-year heuristic is a general rule; the real breakeven depends on local market dynamics.\n- I'm assuming you have (or could obtain) a down payment without draining your emergency reserves, and that your income is stable enough to carry the mortgage.\n- I'm not factoring in tax treatment (mortgage interest deduction, capital gains exclusion, property tax deductions) because those vary by jurisdiction and individual tax situation.\n\n### Bottom line\nIf your career, family situation, or location preferences might shift within 5 years \u2192 **rent.** If you're confident you want to stay put, value customization, and want to lock in cost certainty \u2192 **buy.** The lifestyle question (do you value roots and stability, or flexibility and optionality?) is just as important as the financial math \u2014 and it's the part only you can answer.\n\nIf you want to run actual numbers for a specific market or property, I'd need local price, rent comps, mortgage rate, and your down payment / tax bracket to give you a concrete breakeven analysis."
+    },
+    {
+      "prompt": "gmail-triage",
+      "cat": "email",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "Should the summary explicitly highlight emails that require a response or action from you?"
+      ],
+      "values": [
+        0.467
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "Should the summary explicitly highlight emails that require a response or action from you?",
+          "status": "ANSWERED",
+          "fact": "Yes. Jim's profile emphasizes \"lead takeaway+action\" formatting, so unread emails needing a reply or action should be flagged explicitly (e.g., an \"\u26a0\ufe0f Needs response/action\" marker) while the rest get a brief pass-through summary.",
+          "evidence": "Should the summary explicitly highlight emails that require a response or action from you? -> Yes. Jim's profile emphasizes \"lead takeaway+action\" formatting, so unread emails needing a reply or action should be flagged explicitly (e.g., an \"\u26a0\ufe0f Needs response/action\" marker) while the rest get a brief pass-through summary.",
+          "via": "research",
+          "value": 0.4674034348820299,
+          "stakes": 0.8,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1069,
+      "stakes_on_len": 864,
+      "stakes_off_final": "I can't fulfill this request right now \u2014 this call has no tools available, so I can't access your Gmail, query your inbox, or read any messages.\n\nTo actually summarize your unread Gmail from this week, I need one of the following to be available:\n\n1. **The Gmail/Google Workspace tools** (e.g., the `gws` CLI or `google_api.py` scripts) so I can query your inbox for unread messages from the past 7 days, filter for importance, and summarize them.\n2. **You paste the email content** \u2014 if you forward or paste the raw text of your unread emails, I can summarize, categorize, and flag action-needed items directly.\n\n**Assumptions I'm making about the intended output** (based on your profile):\n- Summary would lead with **action-needed emails first**, flagged with a \u26a0\ufe0f marker, then pass-through brief summaries for the rest.\n- Formatted with bold sender names, timestamps relative to Pacific Time, and tight one-line takeaways.\n- Inbox-only scope (no label diving unless asked).\n\nWhen tools are back or you provide the content, I'll produce the full summary immediately.",
+      "stakes_on_final": "I can't fetch your Gmail in this turn \u2014 this call has no tools available, so I have no way to reach your inbox, run `gws`/`google_api.py`, or query any mail API. I won't pretend to have read messages I haven't.\n\nWhat I need to actually do this:\n\n1. A tool-enabled turn so I can run the Hermes Google Workspace / Gmail tooling (e.g. `gws gmail search` or `google_api.py gmail`).\n2. A search window \u2014 \"this week\" \u2014 I'll default to `newer_than:7d is:unread` unless you say otherwise.\n3. A definition of \"important\" \u2014 I can filter by sender (your contacts, known orgs like USAW, Canyon Creek, Fortified Strength), or skip newsletters/promotions entirely. Or you can let me rank by sender + thread length + whether a reply is pending.\n\nSay the word and I'll pull it on the next turn \u2014 unread this week, action-needed emails flagged with \u26a0\ufe0f, the rest briefly summarized."
+    },
+    {
+      "prompt": "cal-schedule",
+      "cat": "calendar",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "Should the response be a direct calendar invite or an email proposing a few time options for Alex to choose from?"
+      ],
+      "values": [
+        0.402
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "Should the response be a direct calendar invite or an email proposing a few time options for Alex to choose from?",
+          "status": "ANSWERED",
+          "fact": "An **email proposing a few time options** is the right choice. Alex isn't an established/approved contact, and your profile preferences favor low-commitment, read-only-style interactions with unconfirmed parties \u2014 proposing options lets Alex pick a slot that actually works rather than assuming availability with a direct invite.",
+          "evidence": "Should the response be a direct calendar invite or an email proposing a few time options for Alex to choose from? -> An **email proposing a few time options** is the right choice. Alex isn't an established/approved contact, and your profile preferences favor low-commitment, read-only-style interactions with unconfirmed parties \u2014 proposing options lets Alex pick a slot that actually works rather than assuming availability with a direct invite.",
+          "via": "research",
+          "value": 0.40194146107191137,
+          "stakes": 0.6,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1208,
+      "stakes_on_len": 1644,
+      "stakes_off_final": "I can't send email from this call \u2014 no tools are available. Here's exactly what's needed and a ready-to-send draft so you can fire it off in one step.\n\n**What I need from you to actually send this:**\n1. Alex's email address (not on file as an approved contact)\n2. Confirm these time slots work for you \u2014 I based them on your Pacific Time zone and assumed standard business hours:\n\n**Proposed slots (all Pacific Time):**\n- Tue Jul 7, 10:00\u201310:30 AM\n- Wed Jul 8, 1:00\u20131:30 PM\n- Thu Jul 9, 2:00\u20132:30 PM\n\n**Draft email:**\n\n---\n\nSubject: 30 min next week?\n\nHi Alex,\n\nGot something quick to discuss \u2014 30 minutes should cover it. Any of these work for you?\n\n- Tue Jul 7, 10:00\u201310:30 AM PT\n- Wed Jul 8, 1:00\u20131:30 PM PT\n- Thu Jul 9, 2:00\u20132:30 PM PT\n\nIf none fit, just send me a couple of times that do and I'll make it work.\n\nThanks,\nJim\n\n---\n\n**Assumptions made:**\n- \"Next week\" = the week of Mon Jul 7, 2026 (current week started Sat Jul 4).\n- Standard business hours, PT, three options across different days/times.\n- Meeting is generic \u2014 no topic specified. If you tell me what it's about, I'll add a one-line agenda so Alex comes prepared.\n\nWant me to adjust the slots, add a topic line, or target a specific day?",
+      "stakes_on_final": "I can draft the email proposing time options for Alex, but I have no tools available in this call, so I cannot check your calendar or send the email. Here's what I'd need to actually execute this:\n\n**Missing information:**\n1. **Alex's email address** \u2014 Alex isn't in your approved contacts list, so I don't have a valid recipient.\n2. **Meeting purpose/agenda** \u2014 I don't know what the meeting is about, which should be in the subject line and body.\n3. **Your calendar availability next week** \u2014 I'd need to pull your Google Calendar (work or personal account?) to propose specific slots you're actually free.\n\n**Assumptions I'm making to produce a useful draft:**\n- Your week runs Monday\u2013Friday (July 7\u201311, 2026, Pacific Time).\n- Generic 30-min slots; replace with real free times once I can check the calendar.\n- Professional but warm tone matching your default style.\n\n---\n\n**Subject:** 30 min sync next week?\n\nHi Alex,\n\nGot something worth a quick conversation. Could we grab 30 minutes next week? Here are a few slots that should work on my end \u2014 pick whichever is easiest:\n\n- **Tue Jul 8** \u2014 10:00\u201310:30 AM PT\n- **Wed Jul 9** \u2014 2:00\u20132:30 PM PT\n- **Thu Jul 10** \u2014 11:00\u201311:30 AM PT\n\nIf none of those land, send me a couple of times that work for you and I'll make it happen.\n\nThanks,\nJim\n\n---\n\n**To turn this into a sent email, I need:**\n- Alex's email address\n- The meeting topic (for subject/body)\n- Which calendar account to check for real availability (jim.wiese@gmail.com or jwiese@salesforce.com)\n\nOnce I have those, I can pull your actual free slots, fill in the draft with times that don't conflict, and send via your email gateway."
+    },
+    {
+      "prompt": "explain-oauth",
+      "cat": "knowledge",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-off",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-on",
+        "stakes-off"
+      ],
+      "judge_reasons": [
+        "Response A provides more specific, actionable details (exact HTTP requests, PKCE implementation, state parameter mechanics) and explicitly scopes the explanation to a developer audience, reducing ambiguity compared to B's slightly more general treatment.",
+        "Response A provides a more complete and actionable explanation by explicitly including the registration step, clarifying the OAuth2 vs. OpenID Connect distinction, and noting that PKCE is now recommended for all client types, not just public ones.",
+        "Response A provides more actionable detail (exact HTTP requests, PKCE mechanics, state parameter rationale), explicitly scopes the audience assumption, and explains the 'why' behind design choices more concretely than B."
+      ],
+      "selected": [
+        "What is the target technical expertise level of the audience receiving this explanation?"
+      ],
+      "values": [
+        0.527
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What is the target technical expertise level of the audience receiving this explanation?",
+          "value": 0.5274064239904349,
+          "stakes": 0.9,
+          "gap_reason": "The task contains no information about the intended audience's technical expertise level."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What is the target technical expertise level of the audience receiving this explanation?",
+          "status": "NOT_FOUND",
+          "fact": "The task contains no information about the intended audience's technical expertise level.",
+          "evidence": "What is the target technical expertise level of the audience receiving this explanation? -> (known gap: The task contains no information about the intended audience's technical expertise level.)",
+          "via": "research",
+          "value": 0.5274064239904349,
+          "stakes": 0.9,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 6994,
+      "stakes_on_len": 6759,
+      "stakes_off_final": "# How OAuth2 Works\n\n## Assumption\n\nThe task doesn't specify the audience's technical level. I'm assuming a **developer-level** reader who understands HTTP and web fundamentals but hasn't necessarily implemented OAuth before. I'll explain the protocol accurately with real-world grounding, not a hand-wavy analogy.\n\n---\n\n## The Core Problem\n\nYou have a **Client** (your app) that wants to access a user's data on a **Resource Server** (e.g., Google, GitHub). The na\u00efve solution\u2014handing your app the user's password\u2014is insecure: the app gets full account access, the password is exposed, and revoking access requires changing the password.\n\nOAuth2 solves this by introducing a **time-limited, scope-limited access token** that the user authorizes without ever sharing their password with the client.\n\n---\n\n## The Five Roles\n\n| Role | Example |\n|---|---|\n| **Resource Owner** | The user (you) |\n| **Client** | The third-party app wanting access |\n| **Authorization Server** | Google's OAuth endpoint (issues tokens) |\n| **Resource Server** | Google's API (serves protected data) |\n| **Resource Owner's User-Agent** | The browser/mobile app the user interacts with |\n\nThe Authorization Server and Resource Server are often the same company but are logically distinct.\n\n---\n\n## The Authorization Code Flow (the standard)\n\nThis is the most common flow for web/mobile apps. Here's what happens, step by step:\n\n### Step 1 \u2014 Redirect the user to the authorization server\n\nThe client sends the user's browser to the authorization server's `/authorize` endpoint with key parameters:\n\n```\nGET https://accounts.google.com/o/oauth2/v2/auth?\n  response_type=code\n  &client_id=YOUR_CLIENT_ID\n  &redirect_uri=https://yourapp.com/callback\n  &scope=openid%20email%20profile\n  &state=CSRF_TOKEN_HERE\n```\n\n- `response_type=code` \u2014 requests an authorization code, not a token directly.\n- `scope` \u2014 declares exactly what access the app wants (e.g., read-only calendar).\n- `state` \u2014 a random string the client generates; it must match on the return trip to prevent CSRF.\n- `redirect_uri` \u2014 where the auth server sends the user back after consent.\n\n### Step 2 \u2014 User authenticates and grants consent\n\nThe authorization server shows its own login page (the user never types credentials into your app). It then presents a consent screen listing the requested scopes. The user approves or denies.\n\n**Crucially: the client never sees the password.**\n\n### Step 3 \u2014 Redirect back with an authorization code\n\nIf the user grants consent, the auth server redirects to your `redirect_uri`:\n\n```\nGET https://yourapp.com/callback?code=AUTH_CODE&state=CSRF_TOKEN_HERE\n```\n\n- The `code` is a short-lived, single-use string (typically expires in ~10 minutes).\n- The client verifies `state` matches what it sent in Step 1.\n\n### Step 4 \u2014 Exchange code for tokens (server-to-server)\n\nThe client makes a back-channel POST to the auth server's `/token` endpoint:\n\n```\nPOST https://oauth2.googleapis.com/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=authorization_code\n&code=AUTH_CODE\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n&redirect_uri=https://yourapp.com/callback\n```\n\nThis exchange happens server-to-server so the `client_secret` stays private. The response:\n\n```json\n{\n  \"access_token\": \"ya29.a0...\",\n  \"refresh_token\": \"1//0e...\",\n  \"expires_in\": 3600,\n  \"token_type\": \"Bearer\"\n}\n```\n\n### Step 5 \u2014 Use the access token to call the resource server\n\nThe client includes the token in API requests:\n\n```\nGET https://www.googleapis.com/calendar/v3/calendars/primary/events\nAuthorization: Bearer ya29.a0...\n```\n\nThe resource server validates the token (often via introspection or JWT signature) and returns the data if the token's scope covers it.\n\n### Step 6 \u2014 Refresh when the access token expires\n\nAccess tokens are short-lived (~1 hour). When they expire, the client uses the `refresh_token` (long-lived, stored securely) to get a new access token without re-prompting the user:\n\n```\nPOST https://oauth2.googleapis.com/token\ngrant_type=refresh_token\n&refresh_token=1//0e...\n&client_id=YOUR_CLIENT_ID\n&client_secret=YOUR_CLIENT_SECRET\n```\n\n---\n\n## Why the Two-Step (Code \u2192 Token) Design Matters\n\nThe code\u2192token split seems roundabout. It's deliberate:\n\n- The authorization code travels through the browser (front-channel, less secure).\n- The code-to-token exchange happens server-to-server (back-channel, secure) where the `client_secret` can be used.\n- This separates \"user consent\" from \"credential delivery\"\u2014a code intercepted in the browser is useless without the client secret.\n\n---\n\n## Other Flows (briefly)\n\n| Flow | Use Case |\n|---|---|\n| **Client Credentials** | Server-to-server, no user involved (e.g., your backend calling a partner API). Uses client_id + secret directly for a token. |\n| **Implicit** | Legacy browser-only apps (no backend). Deprecated in OAuth 2.1\u2014replaced by Authorization Code + PKCE. |\n| **Resource Owner Password** | Client collects username/password directly. **Deprecated**\u2014defeats the point of OAuth. Only for legacy/trusted apps. |\n| **Device Code** | TVs, IoT devices with no browser input. User visits a URL on another device and enters a code. |\n\n### PKCE (Proof Key for Code Exchange)\n\nFor apps with no backend (SPAs, mobile), there's no safe place to store a `client_secret`. PKCE replaces the secret with a dynamic challenge:\n\n1. Client generates `code_verifier` (random string) and `code_challenge = SHA256(code_verifier)`.\n2. Sends `code_challenge` with the authorization request.\n3. When exchanging the code for a token, includes `code_verifier`.\n4. Auth server verifies `SHA256(code_verifier) == code_challenge`.\n\nThis prevents an attacker who intercepts the authorization code from redeeming it (they don't have the verifier).\n\n---\n\n## Key Security Properties\n\n- **Scopes** limit what a token can do. A calendar-read token can't delete emails.\n- **Short-lived access tokens** limit blast radius if stolen.\n- **Refresh tokens** are stored server-side, revocable, and scoped.\n- **The `state` parameter** prevents CSRF on the redirect.\n- **The `client_secret` never reaches the browser** (in the code flow).\n- **Revocation** \u2014 the user can revoke app access at any time on the provider's settings page; the auth server stops honoring the refresh token.\n\n---\n\n## Mental Model Summary\n\n```\nUser \u2500\u2500consents\u2500\u2500> Auth Server \u2500\u2500code\u2500\u2500> Client backend \u2500\u2500code+secret\u2500\u2500> Auth Server \u2500\u2500token\u2500\u2500> Client backend\n                                                                                                    \u2502\n                                                                                                    \u25bc\n                                                                                          Resource Server (API)\n```\n\nThe user delegates limited, revocable access\u2014never exposing their password\u2014through a protocol that separates consent (front-channel) from credential issuance (back-channel). That separation is the entire security value of OAuth2.",
+      "stakes_on_final": "# How OAuth2 Works\n\nOAuth2 is a delegated authorization framework. It lets a user grant a third-party application limited access to their data on another service \u2014 without handing over their password.\n\n## The core problem it solves\n\nImagine you use a calendar app that wants to read your Google Calendar. You *could* give the calendar app your Google password, but that's terrible: the app gets full access to everything in your Google account, you can't scope what it sees, and if the app is compromised, your password leaks.\n\nOAuth2 fixes this by inserting an intermediary: the authorization server run by Google. The calendar app never sees your password. Instead, it receives a time-limited, scoped token that grants access only to calendar data.\n\n## The five actors\n\n| Actor | Role |\n|------|------|\n| **Resource Owner** | The end user who owns the data (you). |\n| **Client** | The third-party app wanting access (the calendar app). |\n| **Authorization Server** | The service that authenticates the user and issues tokens (Google's auth server). |\n| **Resource Server** | The API holding the protected data (Google Calendar API). |\n| **Redirect URI** | Where the auth server sends the user back after they approve. |\n\n## The Authorization Code flow (most common)\n\nThis is the flow used by web apps. It has two phases: a browser-based authorization step and a server-to-server token exchange.\n\n1. **Registration.** Before any of this happens, the client registers with the authorization server and receives a `client_id` and `client_secret`. It also declares its redirect URI(s).\n\n2. **Authorization request.** The client redirects the user's browser to the authorization server's `/authorize` endpoint with parameters:\n   - `client_id` \u2014 who's asking\n   - `redirect_uri` \u2014 where to send the user back\n   - `scope` \u2014 what access is being requested (e.g., `calendar.readonly`)\n   - `state` \u2014 a random value the client generates to prevent CSRF\n   - `response_type=code` \u2014 requesting an authorization code\n\n3. **User consent.** The authorization server asks the user to log in (if not already) and presents a consent screen: \"The calendar app wants to read your calendar data. Allow?\" The user approves.\n\n4. **Authorization code returned.** The authorization server redirects the browser back to the client's `redirect_uri` with two parameters appended: `code` (a short-lived, single-use authorization code) and `state` (the same value the client sent \u2014 the client verifies it matches).\n\n5. **Token exchange.** The client's backend now makes a direct server-to-server POST to the authorization server's `/token` endpoint, sending:\n   - `code`\n   - `client_id` and `client_secret`\n   - `redirect_uri`\n   - `grant_type=authorization_code`\n\n6. **Tokens issued.** The authorization server validates everything and responds with:\n   - `access_token` \u2014 the credential the client uses to call the resource server API\n   - `refresh_token` \u2014 used to get a new access token when the current one expires (optional, depends on scope/server)\n   - `token_type=bearer`\n   - `expires_in` \u2014 seconds until the access token expires\n\n7. **API call.** The client calls the resource server API, passing the access token in the HTTP header:\n   ```\n   Authorization: Bearer <access_token>\n   ```\n\n8. **Token refresh.** When the access token expires, the client posts to `/token` with `grant_type=refresh_token` and the refresh token to get a new access token \u2014 without involving the user again.\n\n## Why the two-step (code \u2192 token) dance\n\nThe authorization code exists so the access token never passes through the browser. The browser only sees the short-lived, single-use code. The access token travels directly between the client's backend and the authorization server over a TLS-protected channel. This is what makes the flow safe for web apps with a server component.\n\n## The other flows\n\nOAuth2 defines several grant types for different client types:\n\n- **Client Credentials** \u2014 machine-to-machine. The client is itself the resource owner (no end user). It authenticates with its `client_id`/`client_secret` and gets a token directly. Used for service-to-service API calls.\n- **Resource Owner Password Credentials** \u2014 the client collects the user's username/password directly and exchanges it for a token. This defeats much of the purpose of OAuth2 (the client sees the password) and is strongly discouraged; included only for legacy migration scenarios.\n- **Implicit** \u2014 returns the access token directly in the browser redirect fragment, skipping the code exchange. Designed for pure client-side apps that have no backend. Now deprecated in OAuth 2.1 because the token is exposed to the browser and there's no secure way to store a client secret; **PKCE** (below) replaced it.\n- **PKCE (Proof Key for Code Exchange)** \u2014 an extension to the authorization code flow for public clients (SPAs, mobile apps) that can't keep a `client_secret` safe. The client generates a random `code_verifier`, sends its SHA-256 hash (`code_challenge`) with the authorization request, and proves it has the original verifier when exchanging the code. This prevents an attacker who intercepts the code from using it, because they don't have the verifier. PKCE is now recommended for *all* client types, not just public ones.\n\n## Key security properties\n\n- **Scoped access.** The token grants only the permissions the user approved, not blanket account access.\n- **No password sharing.** The client never sees the user's credentials.\n- **Time-limited tokens.** Access tokens expire; refresh tokens can be revoked.\n- **Consent is explicit.** The user sees what's being requested and can decline.\n- **CSRF protection.** The `state` parameter ensures the authorization response came from the client's own request.\n- **Redirect URI validation.** The authorization server only sends the response to pre-registered URIs, preventing interception.\n\n## Important: OAuth2 vs. OpenID Connect\n\nOAuth2 is an *authorization* framework \u2014 it answers \"can this app access this data?\" It does not define how to authenticate the user or provide identity information. **OpenID Connect (OIDC)** layers authentication on top: it adds an `id_token` (a JWT containing the user's identity) alongside the access token and defines a standard set of scopes and endpoints for login. If you need \"log in with Google/Facebook/etc.\", you need OIDC, not bare OAuth2.\n\n---\n\n**Material risks \u2014 assumptions to confirm**\n\n- Assumption: the audience is a general technical reader \u2014 familiar with web fundamentals (HTTP, APIs, server/client model) but not an OAuth2 specialist. The explanation prioritizes the dominant Authorization Code + PKCE flow and briefly covers the other grants rather than exhaustively detailing every edge case."
+    },
+    {
+      "prompt": "review-pr",
+      "cat": "code-review",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A provides a specific, actionable, and deeply scoped review of the actual PR, while Response B fails to resolve the user's request by making an incorrect assumption about the working environment and asking for information the user already implied.",
+        "Response B provides a thorough, specific, and actionable review of the actual PR with concrete findings, test failures, and fixes, while Response A merely explains why it cannot proceed without more information.",
+        "Response A provides a thorough, specific, and actionable review of the actual PR, while Response B fails to locate it and offers only generic, unhelpful guidance."
+      ],
+      "selected": [
+        "What is the URL or identifier of the specific open pull request that needs to be reviewed?"
+      ],
+      "values": [
+        0.662
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What is the URL or identifier of the specific open pull request that needs to be reviewed?",
+          "value": 0.6623347708898485,
+          "stakes": 0.9,
+          "gap_reason": "The working directory is not a git repository (no `.git` directory present), no GitHub remote is configured, and `gh` is unavailable, so there is no PR URL or identifier to be found. You'll need to provide the PR URL/number and repository explicitly."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What is the URL or identifier of the specific open pull request that needs to be reviewed?",
+          "status": "NOT_FOUND",
+          "fact": "The working directory is not a git repository (no `.git` directory present), no GitHub remote is configured, and `gh` is unavailable, so there is no PR URL or identifier to be found. You'll need to provide the PR URL/number and repository explicitly.",
+          "evidence": "What is the URL or identifier of the specific open pull request that needs to be reviewed? -> (known gap: The working directory is not a git repository (no `.git` directory present), no GitHub remote is configured, and `gh` is unavailable, so there is no PR URL or identifier to be found. You'll need to provide the PR URL/number and repository explicitly.)",
+          "via": "research",
+          "value": 0.6623347708898485,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 646,
+      "stakes_on_len": 8136,
+      "stakes_off_final": "I can't review your PR because I don't have enough information to locate it. Here's what I found:\n\n- The current working directory (/opt/hermes) does not have a `.git` directory, so there's no local git repo to inspect.\n- No GitHub remote is configured, and `gh` (GitHub CLI) is unavailable, so I can't discover open PRs automatically.\n\nTo review your PR, please provide one of the following:\n\n1. The PR URL (e.g., `https://github.com/owner/repo/pull/123`)\n2. The repository name and PR number (e.g., `owner/repo #123`)\n3. A link to the diff or branch you want reviewed\n\nOnce you give me that, I can fetch the PR details and review it for issues.",
+      "stakes_on_final": "I now have a thorough review. Let me compile the findings.\n\nHere's my review of PR #2 (feat: plan-review Claude Code plugin (dual-face hub)) in `whichguy/hermes-skills-marketplace`:\n\nhttps://github.com/whichguy/hermes-skills-marketplace/pull/2\n\nThis is a draft PR adding a Claude Code plugin face to the skills marketplace, implementing a 3-stage plan-review gate on ExitPlanMode plus a git-worktree isolation advisory gate, a cleanup hook, and the `/investigate-plan` + `/waive-investigation` commands.\n\nI checked out the branch, ran the test suites, verified the SHA256 checksums, validated the JSON manifests, and read all 1,785 lines of the diff. Here's what I found:\n\n---\n\n**TEST FAILURE (blocking)**\n\n`plan-unknowns-gate.test.sh` \u2014 1 failure on this system (Linux, Python 3.13.5, C.UTF-8 locale):\n\nThe Unicode slug test fails at line 181. The test asserts that `plan_slug()` (Python `re.sub`, codepoint-level) produces the same output as `tr -c` (shell, byte-level). They don't for multibyte characters:\n\n```\nInput:    \"pla\u00f1-r\u00e9sum\u00e9\"\nPython:   \"pla--r-sum-\"   (\u00f1 = 1 codepoint \u2192 1 dash)\nShell tr: \"pla---r--sum--\" (\u00f1 = 2 UTF-8 bytes \u2192 2 dashes)\n```\n\nThe test `PASS slug-unicode` assertion fails. The aggregate `run-tests.sh` reports `1 CHECK(S) FAILED`. The worktree-gate suite passes fully (26/26).\n\nThis is a test-vs-implementation mismatch, not a production bug per se \u2014 but it signals a real cross-platform slug divergence (see below).\n\n**SLUG SANITIZATION MISMATCH (blocking \u2014 silent sentinel breakage)**\n\nThree components sanitize the plan slug three different ways:\n\n1. **Gate** (`plan-unknowns-gate.py`, `plan-worktree-gate.py`, `plan-review-cleanup.py`): `re.sub(r\"[^A-Za-z0-9._-]\", \"-\", base)[:64]` \u2014 operates on Unicode codepoints\n2. **run_investigator.sh**: `tr -c 'A-Za-z0-9._-' '-' | cut -c1-64` \u2014 operates on raw bytes\n3. **waive-investigation.md**: no sanitization \u2014 tells the agent to use the raw basename\n\nFor ASCII plan names all three match. For non-ASCII plan names they diverge. The consequence: `run_investigator.sh` writes `.investigated-pla---r--sum--` but the gate checks for `.investigated-pla--r-sum-` \u2014 the sentinel is never found, the investigation gate never sees the proof, and it denies forever. Same for `/waive-investigation`: the agent writes `.investigation-waived-my plan` (raw) but the gate looks for `.investigation-waived-my-plan` (sanitized).\n\nThe waive command also doesn't mention sanitization at all \u2014 it says \"basename without .md\" and `touch ~/.claude/plans/.investigation-waived-<slug>`, leaving the agent to guess.\n\n**FIX:** Pick one canonical sanitization and use it everywhere. The simplest: make `run_investigator.sh` use Python for slug sanitization (matching the gates), and update `waive-investigation.md` to either provide a sanitize command or tell the agent to match the gate's `[^A-Za-z0-9._-] \u2192 -` rule. Alternatively, make the gate's slug function byte-level to match `tr` \u2014 but that changes Python string semantics. The codepoint approach is more correct; align the shell to it.\n\n---\n\n**HARDCODED `~/.claude` PATHS IN SKILL.md (medium \u2014 plugin won't work as installed)**\n\n`plugins/plan-review/skills/investigate-plan/SKILL.md` hardcodes `~/.claude/skills/investigate-plan/scripts/run_investigator.sh` and `~/.claude/hooks/plan-unknowns-gate.test.sh`. When installed as a Claude Code plugin, these files live under `${CLAUDE_PLUGIN_ROOT}/skills/investigate-plan/` and `${CLAUDE_PLUGIN_ROOT}/handlers/`, not `~/.claude/`. The PR body acknowledges enablement/cutover is a follow-up, but the hardcoded paths mean the skill is broken out of the box for plugin users.\n\n**FIX:** Use `${CLAUDE_PLUGIN_ROOT}/` in the paths, or at minimum document that the cutover step must symlink/copy these files. The hooks.json already correctly uses `${CLAUDE_PLUGIN_ROOT}` \u2014 the skill docs should too.\n\n---\n\n**SYNC.md WRONG REPO NAME (low \u2014 documentation)**\n\n`SYNC.md` says \"hermes (this repo), the canonical source of truth\" but this repo is `hermes-skills-marketplace`, not `hermes`. The PR body says the handlers were \"taken from the newest live copies in `~/.claude`\", so the canonical source is actually `~/.claude` (or arguably `hermes-agent`). The SYNC.md references to \"hermes\" are ambiguous and could mislead someone trying to find the canonical source.\n\n**FIX:** Update SYNC.md to say `hermes-skills-marketplace (this repo)` or clarify that `~/.claude` is the live canonical copy and this repo is the published version.\n\n---\n\n**DUPLICATE investigate-plan SKILL DIVERGENCE (low \u2014 maintenance risk)**\n\nThe repo already has `skills/investigate-plan/` (Hermes face, older \u2014 no host sentinel, no tests) and the PR adds `plugins/plan-review/skills/investigate-plan/` (Claude Code face, newer \u2014 has host sentinel, has tests). The `run_investigator.sh` scripts differ: the plugin version has the `.investigated-<slug>` sentinel logic (5087 bytes), the skills version doesn't (3910 bytes). This is intentional (dual-face), but there's no mechanism keeping them in sync. The skills version will silently rot.\n\n**FIX:** Add a note to SYNC.md covering the skill scripts too, or add a test that diffs the two versions and flags drift.\n\n---\n\n**THINGS THAT ARE CORRECT**\n\n- SHA256 checksums (`CANONICAL.sha256`) verify correctly when run from the handlers directory (`verify-sync.sh` does `cd \"$(dirname \"$0\")\"`). All three handler hashes match.\n- Both JSON manifests (`marketplace.json`, `plugin.json`) parse and validate.\n- The `hooks.json` correctly uses `${CLAUDE_PLUGIN_ROOT}` for command paths.\n- The fail-open design is sound: every exception path in both gates exits 0, and the top-level `try/except` in `__main__` catches everything.\n- The 3-stage state machine in the unknowns gate is well-structured: Stage 1 (review nudge, hard under `CLAUDE_PLAN_REQUIRE_REVIEW=1`), Stage 2 (Codex audit, writes `.needs-investigation` sentinel), Stage 3 (investigation closed loop, checks sentinel + container status).\n- The worktree gate correctly defers to the unknowns gate (doesn't run Codex when the plan is immature), and its cache invalidation by plan hash is correct \u2014 failed Codex runs are not cached (the `if verdict != \"failed\"` guard on `write_sentinel`).\n- The PostToolUse cleanup correctly only fires after a successful ExitPlanMode (not after a denial), which is the right time to clear sentinels for a fresh start.\n- The `waive-investigation.md` command sentinel name (`.investigation-waived-<slug>`) matches the gate's `sentinel_exists(\"investigation-waived\", slug)` check \u2014 for ASCII slugs.\n- The `run_investigator.sh` test suite (13 cases, all pass) covers offline validation, fake Docker dispatch, base64 transport round-trip, slug sanitization, and the host sentinel write/no-write logic.\n- Both PreToolUse hooks fire on every ExitPlanMode call (per Claude Code docs: \"precedence is deny > defer > ask > allow\"), so the worktree gate's deferral logic is not dead code \u2014 it runs even when the unknowns gate denies, and correctly `allow()`s to avoid overriding the deny.\n\n---\n\n**RECOMMENDATION**\n\nFix the slug sanitization mismatch (blocking \u2014 it silently breaks the investigation closed loop for any non-ASCII plan name) and the failing test before merging. The hardcoded paths and SYNC.md are worth fixing but can go in a follow-up since the PR is a draft and the cutover is explicitly deferred.\n\nMaterial risks \u2014 assumptions to confirm:\n- I assumed PR #2 (your own draft, author `whichguy`) is \"my open PR\" rather than PR #1 (external contributor `kriptoburak`). If you meant PR #1, let me know and I'll review that one instead.\n- I assumed the test failure is environment-specific (Linux/C.UTF-8). It may pass on macOS with a different locale \u2014 but the underlying slug divergence is real regardless of whether the test catches it on your dev machine.\n- I did not test the live Docker tier of the investigate-plan wrapper (opt-in via `INVESTIGATE_TEST_LIVE=1`), since no `hermes` container is running here. The offline/stubbed tests all pass.\n- I could not post this as a GitHub review comment (no `gh` CLI, no GitHub token available). The findings are here for you to act on."
+    },
+    {
+      "prompt": "organize-files",
+      "cat": "system-files",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A provides a complete, ready-to-run script with clear assumptions, while Response B merely describes what it could do without delivering the actual code.",
+        "Response A provides a complete, ready-to-run script with explicit duplicate handling, clear assumptions, and actionable next steps, while B only describes options without delivering the script.",
+        "Response B provides a complete, ready-to-run script with explicit duplicate handling, clear assumptions, and actionable next steps, whereas Response A merely outlines a plan without delivering the actual tool."
+      ],
+      "selected": [
+        "How should the script handle duplicate filenames when moving files into the categorized subfolders?"
+      ],
+      "values": [
+        0.575
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "How should the script handle duplicate filenames when moving files into the categorized subfolders?",
+          "value": 0.575065026375669,
+          "stakes": 0.9,
+          "gap_reason": "No Downloads folder or existing organization script exists in the environment (no `/opt/data/Downloads` directory, no download-organization scripts in the repo, and no wiki entry on the topic), so there is no established convention to report."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "How should the script handle duplicate filenames when moving files into the categorized subfolders?",
+          "status": "NOT_FOUND",
+          "fact": "No Downloads folder or existing organization script exists in the environment (no `/opt/data/Downloads` directory, no download-organization scripts in the repo, and no wiki entry on the topic), so there is no established convention to report.",
+          "evidence": "How should the script handle duplicate filenames when moving files into the categorized subfolders? -> (known gap: No Downloads folder or existing organization script exists in the environment (no `/opt/data/Downloads` directory, no download-organization scripts in the repo, and no wiki entry on the topic), so there is no established convention to report.)",
+          "via": "research",
+          "value": 0.575065026375669,
+          "stakes": 0.9,
+          "recommendation": "ASSUME_DEFAULT"
+        }
+      ],
+      "stakes_off_len": 1513,
+      "stakes_on_len": 5109,
+      "stakes_off_final": "Your Downloads folder doesn't exist in this environment \u2014 there's no `~/Downloads`, no `/opt/data/Downloads`, and no Downloads directory anywhere on the filesystem I can access. This is a headless Hermes server, not your Mac desktop, so your browser downloads land on your local machine and aren't visible here.\n\nHere's what I can do instead:\n\n**Option A \u2014 I write a reusable organization script you run on your Mac**\nI'll create a Python script that categorizes by file type (documents, images, archives, installers/disk images, code, media, data, misc), moves files into subfolders, and handles duplicate filenames by appending a counter suffix. You run it locally with `python3 ~/Downloads/organize_downloads.py` (or I can wire it as a cron/scheduled task on your Mac via Hermes if you connect this box to it).\n\n**Option B \u2014 You connect the Downloads folder**\nIf you mount or sync your Mac's `~/Downloads` to a path I can see (e.g., via SSHFS, rsync, or a Hermes file-share plugin), I'll organize the actual files directly.\n\nAssumptions for the script (resolving the known gap on duplicate handling):\n- Duplicates resolved by appending `_<n>` before the extension (e.g., `report (1).pdf` \u2192 `Documents/report_1.pdf`), keeping the first file in place.\n- Category folders created as subdirectories inside Downloads (not a separate root).\n- `.crdownload` / `.part` / `.tmp` files left untouched (still downloading).\n- Hidden files (dotfiles) skipped.\n- Dry-run mode by default; actual moves require a `--run` flag.",
+      "stakes_on_final": "I can't execute anything in this call \u2014 no tools are wired up, so I can't list, move, or even verify your Downloads folder exists. Here's what I can give you: a ready-to-run script and the assumptions I'm making, so you can run it (or I can in a follow-up turn with tools active).\n\n## Assumption on the open gap (duplicate filenames)\n\nThe unresolved question is how to handle name collisions when moving files into categorized subfolders. My assumption: **append a numeric suffix** (e.g. `report.pdf` \u2192 `report_2.pdf`, `report_3.pdf`) rather than overwriting or skipping. This is the safest default \u2014 no data loss, no silent drops. If you'd prefer skip-with-log or overwrite, say so and I'll adjust.\n\n## Script: organize_downloads.py\n\nDrop this in `~/scripts/organize_downloads.py` and run it with `python3 ~/scripts/organize_downloads.py`. It categorizes by extension into subfolders, handles duplicates with numeric suffixes, and prints a summary. It does NOT delete anything.\n\n```python\n#!/usr/bin/env python3\n\"\"\"Organize ~/Downloads into categorized subfolders. No deletions.\"\"\"\nimport shutil\nfrom pathlib import Path\n\nDOWNLOADS = Path.home() / \"Downloads\"\n\nCATEGORIES = {\n    \"Images\":      {\".jpg\", \".jpeg\", \".png\", \".gif\", \".bmp\", \".heic\", \".webp\", \".svg\", \".tiff\"},\n    \"Documents\":   {\".pdf\", \".doc\", \".docx\", \".xls\", \".xlsx\", \".ppt\", \".pptx\", \".txt\", \".rtf\", \".odt\", \".csv\", \".md\", \".epub\"},\n    \"Archives\":    {\".zip\", \".tar\", \".gz\", \".bz2\", \".xz\", \".7z\", \".rar\", \".dmg\", \".iso\"},\n    \"Audio\":       {\".mp3\", \".wav\", \".flac\", \".aac\", \".m4a\", \".ogg\", \".wma\"},\n    \"Video\":       {\".mp4\", \".mov\", \".avi\", \".mkv\", \".wmv\", \".flv\", \".webm\", \".m4v\"},\n    \"Code\":        {\".py\", \".js\", \".ts\", \".tsx\", \".jsx\", \".java\", \".c\", \".cpp\", \".h\", \".rs\", \".go\", \".rb\", \".php\", \".sh\", \".json\", \".yaml\", \".yml\", \".toml\", \".html\", \".css\", \".sql\"},\n    \"Installers\":  {\".pkg\", \".deb\", \".rpm\", \".apk\", \".msi\", \".exe\"},\n    \"Data\":        {\".db\", \".sqlite\", \".sqlite3\", \".parquet\", \".feather\", \".pkl\", \".npy\", \".npz\"},\n}\n\ndef categorize(suffix: str) -> str:\n    for cat, exts in CATEGORIES.items():\n        if suffix in exts:\n            return cat\n    return \"Other\"\n\ndef unique_destination(dest_dir: Path, name: str) -> Path:\n    \"\"\"Return a non-clobbering path: append _2, _3, ... if needed.\"\"\"\n    target = dest_dir / name\n    if not target.exists():\n        return target\n    stem = target.stem\n    suffix = target.suffix\n    n = 2\n    while True:\n        candidate = dest_dir / f\"{stem}_{n}{suffix}\"\n        if not candidate.exists():\n            return candidate\n        n += 1\n\ndef main():\n    if not DOWNLOADS.exists():\n        print(f\"Downloads folder not found: {DOWNLOADS}\")\n        return\n\n    moved = {}\n    skipped = 0\n    for item in sorted(DOWNLOADS.iterdir()):\n        if item.is_dir():\n            continue  # leave existing folders alone\n        if item.name.startswith(\".\"):\n            continue\n        cat = categorize(item.suffix.lower())\n        dest_dir = DOWNLOADS / cat\n        dest_dir.mkdir(exist_ok=True)\n        dest = unique_destination(dest_dir, item.name)\n        if dest == item:\n            continue  # already in the right place somehow\n        shutil.move(str(item), str(dest))\n        moved.setdefault(cat, []).append(dest.name)\n\n    if not moved:\n        print(\"Nothing to organize \u2014 Downloads is already tidy or empty.\")\n        return\n\n    print(\"Organized Downloads:\\n\")\n    for cat in sorted(moved):\n        print(f\"  {cat} ({len(moved[cat])}):\")\n        for name in moved[cat]:\n            print(f\"    {name}\")\n    print(f\"\\nTotal: {sum(len(v) for v in moved.values())} files moved.\")\n\nif __name__ == \"__main__\":\n    main()\n```\n\n### What it does\n- Scans **top-level files only** (existing subfolders are left untouched, hidden files skipped).\n- Routes each file by extension into `Images/`, `Documents/`, `Archives/`, `Audio/`, `Video/`, `Code/`, `Installers/`, `Data/`, or `Other/`.\n- On a name collision, picks the next available `_N` suffix so nothing is overwritten.\n- Prints a categorized summary at the end.\n\n### What it doesn't do\n- No deletions (safe to re-run).\n- No date-based subfolders (could add `Documents/2024-01/` if you want finer granularity).\n- No undo \u2014 if you want a dry-run first, I can add a `--dry-run` flag.\n\n---\n\n## Material risks \u2014 assumptions to confirm\n\n- **Duplicate handling**: assumed numeric suffix (`_2`, `_3`) rather than skip or overwrite. Change `unique_destination` if you prefer a different policy.\n- **Downloads location**: assumed `~/Downloads` (`/opt/data/Downloads`). If your downloads land elsewhere (e.g. a browser-specific path), point `DOWNLOADS` at the right folder.\n- **Category mapping**: the extension buckets are my defaults, not derived from your actual file mix. If you want me to tailor them to what's really in there, I'd need to run a `ls` first \u2014 which I can do in a turn with tools enabled.\n- **No date subfoldering**: files are grouped by type only. If you typically look for things by date, say so and I'll layer month subfolders under each category.\n\nSay the word and I'll run it (or a dry-run) with tools active."
+    },
+    {
+      "prompt": "summarize-pdf",
+      "cat": "docs",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-off",
+      "judge_votes": [
+        "stakes-off",
+        "stakes-off",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "B is more concise and actionable, avoiding A's redundant disclaimers and unnecessary formatting while still clearly stating the need for the PDF and optionally asking for summary preferences.",
+        "Response A is more concise, avoids redundant repetition, and offers a slightly more structured and actionable path forward without unnecessary meta-commentary.",
+        "Response A correctly identifies the missing PDF as the core issue and explicitly flags the assumption, while Response B incorrectly assumes a local file path is possible and adds unnecessary scope-creep about summary depth."
+      ],
+      "selected": [
+        "What is the intended reading level and background knowledge of the target audience for this summary?"
+      ],
+      "values": [
+        0.713
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "What is the intended reading level and background knowledge of the target audience for this summary?",
+          "value": 0.7126186511579029,
+          "stakes": 0.8,
+          "gap_reason": "No research paper PDF was provided or attached to this session, so I cannot determine the intended reading level or target audience for a summary that doesn't exist yet."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "What is the intended reading level and background knowledge of the target audience for this summary?",
+          "status": "NOT_FOUND",
+          "fact": "No research paper PDF was provided or attached to this session, so I cannot determine the intended reading level or target audience for a summary that doesn't exist yet.",
+          "evidence": "What is the intended reading level and background knowledge of the target audience for this summary? -> (known gap: No research paper PDF was provided or attached to this session, so I cannot determine the intended reading level or target audience for a summary that doesn't exist yet.)",
+          "via": "research",
+          "value": 0.7126186511579029,
+          "stakes": 0.8,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 587,
+      "stakes_on_len": 823,
+      "stakes_off_final": "No research paper PDF was provided or attached to this session, so I cannot produce a summary.\n\nTo proceed, I need:\n\n1. The PDF file itself \u2014 either a path to a local file (e.g., `/opt/data/some-paper.pdf`) or a public URL where I can fetch it.\n2. Optionally, your preferred summary depth and target reading level (e.g., \"executive overview for a technical manager\" or \"detailed breakdown for a domain expert\").\n\nOnce you share the PDF location, I'll extract the content and produce a structured summary covering: problem/motivation, methods, key results, contributions, and limitations.",
+      "stakes_on_final": "**No PDF to summarize.** No research paper was provided or attached to this session, so there is nothing to summarize.\n\n**Assumption I'm proceeding on:** No PDF exists in the conversation context. I'm not fabricating a summary of a paper I haven't seen.\n\n**What I need from you:**\n- The PDF file itself (drag it into the chat, or provide a path to it on disk, or share a URL where it's hosted)\n- If it's on disk, give me the path (e.g. `/opt/data/papers/paper.pdf`) and I'll extract and summarize it once tools are available\n\nI cannot produce a genuine summary without access to the actual paper content.\n\n---\n\n**Material risks \u2014 assumptions to confirm**\n\n1. **No PDF was provided** \u2014 I'm assuming no paper exists in this session's context. If you believe one was attached, it may not have come through; please re-share it."
+    },
+    {
+      "prompt": "plan-day",
+      "cat": "planning",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": true,
+      "mechanical_pass": true,
+      "has_section": true,
+      "winner": "stakes-on",
+      "judge_votes": [
+        "stakes-on",
+        "stakes-on",
+        "stakes-on"
+      ],
+      "judge_reasons": [
+        "Response A provides a fully synthesized, actionable schedule with specific times, addresses the camping errand's flexibility, and flags the time-sensitive check-in, whereas B merely templates the day and defers all useful planning due to a claimed lack of tool access.",
+        "Response A provides a fully fleshed-out, actionable schedule with specific times, addresses the holiday context, and proactively resolves the missing priority list by building a plan from available data, whereas B merely identifies gaps and asks for more information without delivering a usable day plan.",
+        "Response B provides specific, actionable times, locations, and flight details from the user's actual calendar, making it far more useful for planning than A's vague template."
+      ],
+      "selected": [
+        "How long do you estimate each priority task will take to complete?"
+      ],
+      "values": [
+        0.744
+      ],
+      "answered": 0,
+      "gaps": 1,
+      "unresolved_key_questions": [
+        {
+          "question": "How long do you estimate each priority task will take to complete?",
+          "value": 0.7437399163879864,
+          "stakes": 0.9,
+          "gap_reason": "No priority task list exists \u2014 I searched /opt/data for priorities/todo/task files and found none, and the user hasn't provided a priorities list in this thread. The calendar has 4 events today (Workout, CrossFit, \"resale or donate camping items\", Alaska check-in), but those are scheduled events with fixed durations, not priority tasks whose duration needs estimating."
+        }
+      ],
+      "tombstones": [
+        {
+          "question": "How long do you estimate each priority task will take to complete?",
+          "status": "NOT_FOUND",
+          "fact": "No priority task list exists \u2014 I searched /opt/data for priorities/todo/task files and found none, and the user hasn't provided a priorities list in this thread. The calendar has 4 events today (Workout, CrossFit, \"resale or donate camping items\", Alaska check-in), but those are scheduled events with fixed durations, not priority tasks whose duration needs estimating.",
+          "evidence": "How long do you estimate each priority task will take to complete? -> (known gap: No priority task list exists \u2014 I searched /opt/data for priorities/todo/task files and found none, and the user hasn't provided a priorities list in this thread. The calendar has 4 events today (Workout, CrossFit, \"resale or donate camping items\", Alaska check-in), but those are scheduled events with fixed durations, not priority tasks whose duration needs estimating.)",
+          "via": "research",
+          "value": 0.7437399163879864,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 2710,
+      "stakes_on_len": 3946,
+      "stakes_off_final": "No tools available this turn, so I can't pull your live calendar or search for a priorities file \u2014 I'm working from what's already established. Here's the best plan I can build from that.\n\n**Known gap:** No priority task list exists. I searched /opt/data and found no priorities/todo/task files, and you haven't provided one in this thread. Your calendar has 4 events today (Workout, CrossFit, \"resale or donate camping items\", Alaska check-in), but those are scheduled commitments, not a prioritized task list. I'll treat them as fixed anchors and build the day around them. If you have priorities in mind, give me the list and I'll fold them in with time estimates.\n\n---\n\n**Saturday, July 4 \u2014 Independence Day**\n\nYou're in San Ramon (Pacific Time). Today is a holiday, so expect retail/errand hours to be limited and crowds at popular spots.\n\n**Fixed calendar anchors (4 events):**\n1. Workout (time TBD \u2014 I don't have exact start times without tool access)\n2. CrossFit (time TBD)\n3. Resale or donate camping items (errand \u2014 needs a destination and hours check; July 4 closures likely)\n4. Alaska check-in (time-sensitive \u2014 check-in opens 24h before departure; exact window depends on your flight time)\n\n**Assumptions I'm making:**\n- Workout and CrossFit are morning sessions (typical pattern for your schedule)\n- The Alaska check-in event is set to fire when check-in opens (24h before flight), so the time is dictated by your departure\n- \"Resale or donate camping items\" is an errand you want done today, not a recurring commitment\n- Since no priority list exists, your day is essentially these 4 items plus whatever discretionary time remains\n\n**Suggested day structure (template \u2014 fill in actual times once I can read your calendar):**\n\n| Block | Activity | Notes |\n|---|---|---|\n| Early morning | Workout | Anchor #1 |\n| Mid-morning | CrossFit | Anchor #2 |\n| Late morning / midday | Resale or donate camping items | Confirm the destination is open \u2014 July 4 hours are reduced. Goodwill, Salvation Army, and most consignment shops often close early or entirely on the 4th. Call ahead or check Google Maps hours. |\n| When check-in opens | Alaska check-in | Fire this as soon as the window opens to lock in a good seat. Your scripts/alaska_checkin.py can automate this if you want to run it. |\n| Afternoon / evening | Open \u2014 no priorities defined | This is where your gap is. Without a priority list, I can't suggest what goes here. |\n\n**To make this actually useful, I need one of:**\n- Your priorities list (paste it, or point me to a file)\n- Or permission to check your calendar for exact event times so I can build a real schedule with gaps filled\n\nWhat are today's priorities beyond the 4 calendar items?",
+      "stakes_on_final": "No active Kanban tasks and no priority files found. Let me now synthesize the day plan from what I've gathered.\n\nHere's your day plan for **Saturday, July 4, 2026 (Independence Day)**:\n\n---\n\n**Calendar Events (4 scheduled items)**\n\nAll times Pacific (your local timezone, San Ramon CA):\n\n| Time | Event | Location |\n|---|---|---|\n| 5:30 \u2013 6:30 AM | Workout | Fortified Strength, 2411 Old Crow Canyon Rd, San Ramon |\n| 9:00 \u2013 10:00 AM | CrossFit | CrossFit San Ramon, 2411 Old Crow Canyon Rd, Suite N |\n| 4:00 \u2013 5:00 PM | Resale or donate \"camping items\" | (no location set) |\n| 6:45 \u2013 7:00 PM | Alaska AS481 check-in reminder (SJC\u2192SEA) | Online \u2014 confirmation code EPPAYQ |\n\n**Suggested schedule and gaps**\n\n- **Early morning (5:30\u20136:30 AM)**: Workout at Fortified Strength. Both the workout and CrossFit are at the same complex (2411 Old Crow Canyon Rd), so you can stay on-site between sessions.\n\n- **Mid-morning (6:30\u20139:00 AM)**: ~2.5-hour gap between workout and CrossFit. Good window for breakfast, shower, or errands. Since it's July 4, check if any breakfast spots near Old Crow Canyon Rd have holiday hours.\n\n- **9:00\u201310:00 AM**: CrossFit class.\n\n- **10:00 AM \u2013 4:00 PM**: 6-hour open block. This is your largest unscheduled window. Suggested uses:\n  - Resale/donate camping items \u2014 could be moved earlier if the 4 PM slot is just a reminder. If you're heading to a donation center (Goodwill, Play It Again Sports, etc.) or listing items online (Craigslist/Facebook Marketplace), you could start that in the morning instead and free up the afternoon.\n  - July 4 prep \u2014 grocery run, BBQ supplies, family time. Independence Day festivities likely in the afternoon/evening.\n  - No work/Salesforce items blocking since it's a holiday weekend.\n\n- **4:00\u20135:00 PM**: \"Resale or donate camping items\" event. If this is a task (not a hard appointment), consider doing it earlier in the open 10\u20134 block and using this as a cleanup/follow-up window.\n\n- **6:45 PM**: Alaska Airlines check-in opens for tomorrow's flight AS481 (SJC\u2192SEA, departs Sun Jul 5 at 6:45 PM PT). Check in at https://reservations.alaskaair.com/checkin \u2014 last name **Wiese**, confirmation **EPPAYQ**. You're in First Class seat 2C, so seat selection isn't urgent, but check-in is time-sensitive (24h window opens at exactly 6:45 PM tonight). Set a phone alarm for 6:40 PM so you don't miss the window.\n\n- **Evening (after 7:00 PM)**: Open for July 4 festivities \u2014 fireworks, BBQ, family. No calendar conflicts.\n\n---\n\n**Key actions for today**\n1. **Alaska check-in at 6:45 PM** \u2014 the one truly time-sensitive item. Don't miss the 24h window.\n2. **Camping items resale/donate** \u2014 the only discretionary task. Knock it out in the morning open block if you want your afternoon free for July 4.\n3. Both fitness sessions are at the same address \u2014 minimize travel by staying on-site.\n\n---\n\n**Material risks \u2014 assumptions to confirm**\n\n- **No priority task list provided**: I searched `/opt/data` for priority/todo/task files (found none), checked the wiki (no active task list), and checked Kanban (no active tasks). I'm proceeding on the assumption that your 4 calendar events represent your committed time blocks for today, and the open gaps are available for discretionary use. If you have a priority list in mind that wasn't captured anywhere, share it and I'll re-plan around it.\n- **\"Resale or donate camping items\"**: Assumed this is a discretionary task you can flex earlier in the day, not a hard appointment at 4 PM. If it's a scheduled pickup or meeting, the 4 PM slot is firm.\n- **No work/business tasks assumed**: It's Independence Day (federal holiday) and a Saturday. I assumed no Salesforce or FS business tasks need attention today. If something is urgent, flag it.\n- **Timezone**: Events were returned with -04:00 offsets (Eastern). I converted to Pacific (-07:00) based on your San Ramon CA location. The CrossFit title \"9:00 AM\" confirms this conversion is correct."
+    },
+    {
+      "prompt": "security-audit",
+      "cat": "code-review",
+      "k": 1,
+      "arm_tag": "guardrail",
+      "fired": false,
+      "mechanical_pass": true,
+      "has_section": false,
+      "winner": null,
+      "judge_votes": [],
+      "judge_reasons": [],
+      "selected": [
+        "What is the specific service to be audited, and where can its source code, infrastructure configuration, or live endpoints be accessed?"
+      ],
+      "values": [
+        0.72
+      ],
+      "answered": 1,
+      "gaps": 0,
+      "unresolved_key_questions": [],
+      "tombstones": [
+        {
+          "question": "What is the specific service to be audited, and where can its source code, infrastructure configuration, or live endpoints be accessed?",
+          "status": "ANSWERED",
+          "fact": "This is the Hermes Agent codebase itself (`hermes-agent`, v0.18.0 by Nous Research). The source code is in the current working directory `/opt/hermes`, with no git remote configured; it includes a `Dockerfile`, `docker-compose.yml`, a `gateway/` directory (messaging platform adapters), `mcp_serve.py` (MCP server), and `web/` + `tui_gateway/` (live endpoints).\n\nNOT_FOUND: The task says \"audit this service\" but no specific service is named or delimited as data, and the established_facts block is empty \u2014 so the only candidate is the Hermes Agent codebase in `/opt/hermes`, which is the agent's own runtime rather than a user-designated audit target.",
+          "evidence": "What is the specific service to be audited, and where can its source code, infrastructure configuration, or live endpoints be accessed? -> This is the Hermes Agent codebase itself (`hermes-agent`, v0.18.0 by Nous Research). The source code is in the current working directory `/opt/hermes`, with no git remote configured; it includes a `Dockerfile`, `docker-compose.yml`, a `gateway/` directory (messaging platform adapters), `mcp_serve.py` (MCP server), and `web/` + `tui_gateway/` (live endpoints).\n\nNOT_FOUND: The task says \"audit this service\" but no specific service is named or delimited as data, and the established_facts block is empty \u2014 so the only candidate is the Hermes Agent codebase in `/opt/hermes`, which is the agent's own runtime rather than a user-designated audit target.",
+          "via": "research",
+          "value": 0.7195427473934615,
+          "stakes": 0.9,
+          "recommendation": "PRE_ANSWER"
+        }
+      ],
+      "stakes_off_len": 280,
+      "stakes_on_len": 35,
+      "stakes_off_final": "Audit complete. The report above covers 9 findings (4 MEDIUM, 5 LOW) plus 11 positive security controls identified, based on systematic review of the gateway, MCP server, Docker configuration, file/shell tools, credential handling, YAML deserialization, and authentication layers.",
+      "stakes_on_final": "(no response: Timed out after 300s)"
+    }
+  ],
+  "elapsed_s": 1940.5
+}
