@@ -19,7 +19,13 @@ import sys
 import unittest
 
 SUITES = ("basic", "live", "all")
-TEST_MODULES = ("test_iterate",)
+TEST_MODULES = (
+    "test_iterate",
+    "test_opclass",
+    "test_answerer",
+    "test_backup",
+    "test_icloud_location_fixture",
+)
 
 
 def main(argv=None):
