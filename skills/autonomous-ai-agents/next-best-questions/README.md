@@ -153,6 +153,18 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
   the control and treatment must share the SAME generated questions. Arms that each re-generate
   questions are unpaired — a frac delta is question-sampling noise, not the mechanism (iter-three's
   +0.100 arm gap sat on top of a mechanism that fired 0 times, across 0/14 shared-question tasks).
+  Iteration four *enforced* this in-run (`assert_paired_design`, fail-closed) rather than trusting it.
+- **A positive needs an attribution control, and the control can reveal the substrate.** "Oracle
+  answers help" is near-tautological when the hidden tests derive from the same spec as the oracle —
+  so iter four gated any positive on answering HIGH-EVSI questions beating answering the LOW-value
+  tail. The control fired: the tail helped at least as much (+0.182 vs +0.159 over baseline), because
+  the spec-oracle reveals trivia (33% of the tail) and refuses intent (19% of top-K). A failing
+  control can be measuring the substrate's blindness rather than the mechanism's absence — report
+  which, with the reveal rates that distinguish them.
+- **Stage-0 the power question before spending the gate.** A pre-registered, read-only pre-check of
+  the EXISTING durable corpus (do ≥⅓ of tasks even have the contrast the ablation needs?) is nearly
+  free and prevents burning a live run on a structurally null-biased test. Iter four's pre-check said
+  GO (0.479) — and the same instrument catches a saturated substrate for free next time.
 
 ## 6. Open, honestly
 
@@ -183,6 +195,17 @@ so misfired lenses self-prune. That division of labor is repeatedly validated:
   precisely because they are not observable/derivable.** Forward route = candidate 2 (nbq→relentless,
   where a real user answers intent), not more answerability machinery.
   (`references/evsi-validation-findings.md` §Reach→investigate arm.)
+- **Answer-vs-assume ablation (candidate 2 premise-test) — ATTRIBUTION FAIL (iteration four,
+  2026-07-11), and the substrate's blindness measured.** On ONE shared question set per task (paired
+  design enforced in-run), oracle-answering nbq's top-K beat nbq's own assumed defaults (+0.093,
+  9W/3L, clears SE) — but did NOT beat oracle-answering the low-value tail (−0.024, 6W/9L). The
+  spec-bound oracle revealed 19% of top-K vs 33% of the tail: nbq ranks intent questions the oracle
+  refuses, so this harness structurally rewards spec-answerable trivia and cannot attribute ranking
+  value. EVSI↔realized-Δ even went negative (ρ ≈ −0.2, calibration caveat pre-registered). Stage 2
+  (the relentless A/B) NOT greenlit by the mechanical rule; the instrument ships opt-in
+  (`--paired-ablation`). The candidate-2 route is now the **relentless headroom diagnostic**: does a
+  live relentless run leave high-EVSI intent questions `via:"assumed"`? Candidate 2 is neither proven
+  nor killed. (`references/evsi-validation-findings.md` §Answer-vs-assume paired ablation.)
 - **Prompt distillation**: unblocked by the #32 no-adopt (the value model is not the gap), but
   now lower-priority than #30 — re-scope against whichever answerability mechanism lands.
 - **Discrimination preflight (#33 — built, adopted as an opt-in instrument)**: `--strict-preflight`

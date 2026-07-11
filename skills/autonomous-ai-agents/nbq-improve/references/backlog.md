@@ -21,14 +21,22 @@ This is a living ranked list. Rank by expected value ÷ evaluation cost, highest
    lever is a likely dead-end — the value IS in the unobservable intent questions; intent is
    answerable only by the USER. Full verdict:
    `next-best-questions/references/{evsi-validation-findings.md,design-decisions.md}` §Reach→investigate.
-3. **[NOW TOP] Candidate 2 — nbq as the Clarifier preflight into `relentless-solve`'s clarify step,
-   where a REAL user answers intent.** The iteration-two/three findings converge here: intent
-   questions can't be made observable, so the only way to test whether ASKING nbq's high-value
-   questions improves outcomes is a loop where a real user (or the planner's clarify oracle) answers
-   them. Primary metric = replan count / journey failed-path count vs unstructured clarify (a
-   workflow-integration change → two-arm, not the objective harness). Needs the relentless harness.
-   This is now the route #30 was waiting on — reframed: not "make questions answerable" but "route
-   intent questions to whoever holds the intent." See candidate 2 below.
+3. **[STILL TOP] Candidate 2 — nbq→relentless clarify. Stage-1 premise-test DONE 2026-07-11
+   (iteration four): ATTRIBUTION_FAIL; Stage 2 (the relentless A/B) NOT greenlit; next = the
+   relentless headroom diagnostic.** The cheap single-shot ablation (4 arms, ONE shared question set
+   per task, paired design enforced in-run; prereg `prereg-iteration-four.md` @ 823e12786):
+   Δpass(answer − assume) = +0.093 (9W/3L, clears SE, broad win) — real answers DO beat nbq's assumed
+   defaults — but Δpass(answer − answer-lowevsi) = −0.024 (6W/9L): the low-value tail helped at least
+   as much, so the benefit is not attributable to nbq's ranking ON THIS SUBSTRATE. Mechanism measured:
+   the spec-bound oracle reveals 19% of top-K vs 33% of tail — nbq ranks intent questions the oracle
+   refuses; the harness rewards spec-answerable trivia (the pre-registered near-tautology). Candidate
+   2 neither proven nor killed. **Queued next: the headroom diagnostic** — a few live relentless runs
+   confirming high-EVSI intent questions get `via:"assumed"` today (cheap, observational); the
+   expensive A/B only if headroom is real AND a non-spec-bound intent oracle (a real user / the
+   planner's clarify loop) anchors the outcome. Verdict:
+   `next-best-questions/references/{evsi-validation-findings.md,design-decisions.md}`
+   §Answer-vs-assume paired ablation. Instrument kept: `--paired-ablation` + `stage0_precheck.py` +
+   `analyze_ablation.py`.
 4. **Retro answerability probe (candidate 1) — DONE 2026-07-04: PARK verdict delivered.** Built
    `evals/probe_answerability.py` (offline, deterministic, stdlib-only; `--arm` added iter 3) + tests;
    ran on the pinned objective corpus. Zero new model calls. Product: parked #30 for free and

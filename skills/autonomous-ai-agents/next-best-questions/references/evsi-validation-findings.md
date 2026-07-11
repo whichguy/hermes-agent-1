@@ -797,6 +797,76 @@ question-sampling variance and cannot be read as a treatment effect. Added to `v
 Re-open candidate 3 only with (a) a shared-question paired design AND (b) the reach lens forced on —
 but the intent/state finding predicts limited upside.
 
+## Answer-vs-assume paired ablation (candidate 2 premise-test) — ATTRIBUTION FAIL (iteration four, 2026-07-11)
+
+Iteration four ran the cheap single-shot premise-test of candidate 2 (route intent questions to
+whoever holds the intent): does giving the solver the ORACLE's real answer to nbq's top-K questions
+beat giving it nbq's own ASSUMED default (`modal_answer`), holding the question set fixed — with an
+`answer-lowevsi` attribution control (oracle-answer the low-value `all_scored` tail instead) guarding
+the oracle-leakage tautology. Pre-reg: `nbq-improve/references/prereg-iteration-four.md` (committed
+BEFORE the build, `823e12786`). Four arms share ONE `infogain.run` question set per task —
+the iter-three paired-design lesson, now *enforced in-run* (`assert_paired_design`, fail-closed);
+matched injection phrasing (all arms route through the same `solve_prompt`; only answer content
+differs, pinned by test).
+
+**Stage-0 pre-check (read-only, zero model calls, ran FIRST):** combined 23/48 = 0.479 tasks with ≥1
+revealed top-K question ≥ the pre-registered ⅓ threshold ⇒ **GO** (micro32 19/34 = 0.559; iter3
+4/14 = 0.286). `evals/stage0_precheck.py`; durable `~/.hermes/stage0_precheck_iter4.json`.
+
+**Gate:** n=34 (both banks), K=3, all-deepseek (`deepseek-v4-pro:cloud`), `--strict-preflight`,
+1600.1s, 0 errors, `paired_design_valid: true`, `modal_answer` coverage 102/102. Durable:
+`~/.hermes/outcome_eval_iter4.json`; analysis `~/.hermes/analyze_ablation_iter4.json`
+(`evals/analyze_ablation.py` applies the staged rule mechanically).
+
+**Pre-registered staged rule (verbatim):** "PROCEED to Stage 2 (the expensive relentless A/B — a
+FUTURE lap) iff BOTH primary conditions hold: Δpass(answer − assume) > 0 AND
+Δpass(answer − answer-lowevsi) > 0, each with wins ≥ 2× losses AND mean-clears-SE. … answer beats
+assume but NOT answer-lowevsi → attribution FAILS. Answering helps, but nbq's ranking doesn't pick
+better questions than the tail. That is an nbq-value finding (log it); it does NOT greenlight the
+expensive build — it re-opens the ranker, not candidate 2's integration."
+
+**Result — primary 1 PASSES, primary 2 FAILS ⇒ verdict: ATTRIBUTION_FAIL.**
+
+- Δpass(answer − assume) = **+0.093** (9W/3L/22T, SE 0.052, mean clears SE, broad win, sign_p 0.146)
+  — real answers beat nbq's own guessed defaults. The first objective evidence on this substrate that
+  ANSWERING beats ASSUMING at all.
+- Δpass(answer − answer-lowevsi) = **−0.024** (6W/9L/19T, SE 0.063, fails everything) — answering
+  nbq's top-K did NOT beat answering the low-value tail. Arm means vs baseline 0.396: assume 0.462
+  (Δ+0.066, 8W/8L — assuming defaults doesn't clearly help), answer 0.555 (Δ+0.159, 9W/2L, p=0.065),
+  answer-lowevsi 0.578 (Δ+0.182, 12W/4L, p=0.077) — the pre-registered near-tautology realized:
+  *any* spec answer helps.
+- Clean-contrast subset (answer revealed ≥1, n=14): answer−assume +0.116 (5W/2L, clears SE, broad);
+  answer−lowevsi +0.001 (3W/3L) — same shape.
+- **EVSI-validation product (journaled regardless, per prereg):** per-task correlation of predicted
+  value with realized Δ(answer−assume) is **negative** — ρ(value) = −0.204, ρ(evsi) = −0.229 (n=34).
+  Pre-registered caveat applies: this partly recovers nbq's own calibration; the attribution control
+  carries the external test — which failed.
+
+**The mechanism behind the attribution failure (the real finding):** the oracle revealed only
+**19%** (19/102) of nbq's top-K questions vs **33%** (34/102) of the low-value tail. nbq's ranking
+preferentially selects **intent** questions — which the strict spec-bound oracle refuses — so the
+`answer` arm mostly injected refusals while the tail arm injected more real spec content. This is
+laps 1–3's intent-vs-state finding, now measured from the answering side. Two readings, both true:
+(a) mechanically, the pre-registered rule fails — on this substrate nbq's ranking adds no measurable
+answer-value over the tail; (b) structurally, a hidden-spec oracle **cannot reward intent questions**
+(the spec rarely encodes intent), so this substrate cannot attribute nbq's value even when powered on
+reveal counts — it can only reward spec-answerable trivia. The substrate saturation suspected in the
+pre-reg's open unknowns is now measured, not just suspected.
+
+**Per-axis cost (4-arm shared-question run, n=34):** wall 1600s total (mean/task: baseline 3.3s,
+assume 4.7s, answer 6.5s, answer-lowevsi 6.3s — assume adds ZERO model calls beyond the shared
+generation); tokens 23.3k/task and 42.5 calls/task dominated by the single shared generation
+(reported once per task, not 4×: the shared design makes the 4-arm run ≈ the cost of one nbq arm +
+K oracle calls per answering arm).
+
+**Disposition:** Stage 2 (the relentless A/B) is **NOT greenlit** — the staged gate is honored in
+commit order (this verdict recorded before any Stage-2 decision). The arm code ships as a standing
+opt-in eval instrument (`--paired-ablation`; existing arms byte-identical; suite 217→226). Forward
+route: (1) the ranker question is logged but is **unanswerable on this substrate** (an oracle that
+refuses intent cannot rank intent-askers above trivia-askers); (2) the **relentless headroom
+diagnostic** (confirm high-EVSI intent questions get `via:"assumed"` in live relentless runs) remains
+the candidate-2 route — candidate 2 is neither proven nor killed by this lap.
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it

@@ -457,6 +457,24 @@ questions that matter; it would only demote them. **The value lives in the inten
 because they are not derivable/observable.** Route forward: candidate 2 (nbq→relentless), where a real
 user answers intent — not more answerability machinery. #30 and candidate 3 both stay parked.
 
+## Answer-vs-assume paired ablation (candidate 2 premise-test) — ATTRIBUTION FAIL, instrument kept (iter 4, 2026-07-11)
+
+Tested candidate 2's single-shot premise: does the oracle's real answer to nbq's top-K questions beat
+nbq's own assumed default (`modal_answer`), on ONE shared question set per task (paired design
+*enforced in-run* — the iter-3 confound cannot recur), with an `answer-lowevsi` attribution control.
+Stage-0 power pre-check (read-only, pre-registered ⅓ threshold): GO at 23/48 = 0.479. Gate (n=34,
+both banks, all-deepseek, `--strict-preflight`): **Δpass(answer − assume) = +0.093 PASSES** (9W/3L,
+clears SE, broad win) — real answers beat assumed defaults — but **Δpass(answer − answer-lowevsi) =
+−0.024 FAILS** (6W/9L): answering the low-value tail helped *at least as much*. **Verdict:
+ATTRIBUTION_FAIL — Stage 2 (the relentless A/B) NOT greenlit.** Mechanism: the spec-bound oracle
+revealed 19% of top-K vs 33% of the tail — nbq's ranking selects intent questions the oracle refuses,
+so this substrate structurally cannot attribute ranking value (it rewards spec-answerable trivia).
+EVSI↔realized-Δ correlation negative (ρ ≈ −0.20/−0.23; calibration caveat pre-registered). Arm code
+kept as a standing opt-in instrument (`--paired-ablation`; existing arms byte-identical; 217→226
+tests). Route: the relentless headroom diagnostic (does live relentless leave high-EVSI intent
+questions `via:"assumed"`?) — candidate 2 neither proven nor killed. Full numbers + verbatim rule:
+`evsi-validation-findings.md` §Answer-vs-assume paired ablation.
+
 ## Decided / deferred
 
 - **Decided, keep:** one layer of projected answers (no chain) · within-round semantic consolidation
