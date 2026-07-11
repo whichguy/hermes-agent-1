@@ -795,6 +795,42 @@ def _validate_remote_mcp_url(server_name: str, url: Any) -> str:
     return stripped
 
 
+# Maximum length for a server-provided elicitation URL. Bounds the
+# surface area we pass into the consent flow and prevents absurdly
+# long payloads from polluting gateway messages.
+_ELICITATION_URL_MAX_LENGTH = 2048
+
+
+def _sanitize_elicitation_url(url: Any) -> Optional[str]:
+    """Validate and return a safe elicitation URL, or ``None`` if rejected.
+
+    Unlike :func:`_validate_remote_mcp_url` (which validates configured MCP
+    *server connection* URLs and raises), this is used for the
+    server-provided ``ElicitRequestURLParams.url`` that the handler surfaces
+    to the user as a clickable link. It returns ``None`` on rejection so the
+    caller can fail closed to ``decline`` without raising -- the handler is
+    the SDK callback boundary and always returns ``ElicitResult``.
+
+    Accepts ``http://`` / ``https://`` URLs with a non-empty host and a
+    bounded length. Rejects non-strings, empty strings, dangerous schemes
+    (``javascript:``, ``file:``, ``data:``, etc.), and missing hosts.
+    """
+    if not isinstance(url, str):
+        return None
+    stripped = url.strip()
+    if not stripped or len(stripped) > _ELICITATION_URL_MAX_LENGTH:
+        return None
+    try:
+        parsed = urlparse(stripped)
+    except Exception:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return None
+    if not parsed.hostname:
+        return None
+    return stripped
+
+
 def _resolve_client_cert(server_name: str, config: dict):
     """Resolve the ``client_cert`` / ``client_key`` config for mTLS.
 
@@ -1356,11 +1392,15 @@ class ElicitationHandler:
     Form-mode elicitations are routed through Hermes' existing approval
     system (``tools.approval.prompt_dangerous_approval``), which surfaces
     the prompt on whichever surface the active session uses -- CLI, TUI,
-    Telegram, Slack, etc. URL-mode elicitations are declined as unsupported.
+    Telegram, Slack, etc. URL-mode elicitations surface the server-provided
+    URL as a markdown link in the consent flow's description slot so the user
+    can complete the sensitive flow out-of-band in their browser, then
+    collect the same accept/decline/cancel choice. The server-provided URL is
+    sanitized (http/https only, bounded length) before surfacing.
 
-    Failure modes are fail-closed: any timeout, exception, or unexpected
-    state returns ``decline``/``cancel`` rather than silently accepting.
-    The server treats this as the user not approving.
+    Failure modes are fail-closed: any timeout, exception, unsafe URL, or
+    unexpected state returns ``decline``/``cancel`` rather than silently
+    accepting. The server treats this as the user not approving.
     """
 
     # Outer cap for the approval await. ``prompt_dangerous_approval`` runs
@@ -1398,32 +1438,64 @@ class ElicitationHandler:
         """
         self.metrics["requests"] += 1
 
-        # URL-mode elicitations point the user to an external URL for
-        # sensitive out-of-band flows (OAuth, payment processing). Honouring
-        # them requires opening a browser to that URL and waiting for the
-        # server's notifications/elicitation/complete -- out of scope for
-        # the initial implementation. Decline cleanly so the server does
-        # not hang.
         mode = getattr(params, "mode", "form")
-        if mode == "url":
-            logger.info(
-                "MCP server '%s' requested URL-mode elicitation; "
-                "declining (URL-mode elicitation not implemented)",
-                self.server_name,
-            )
-            self.metrics["declined"] += 1
-            return ElicitResult(action="decline")
 
         message = getattr(params, "message", "") or (
             f"MCP server '{self.server_name}' is requesting your approval"
         )
-        schema = getattr(params, "requested_schema", {}) or {}
-        description = _format_elicitation_schema_summary(schema, self.server_name)
 
-        logger.info(
-            "MCP server '%s' elicitation request: %s",
-            self.server_name, _sanitize_error(message)[:200],
-        )
+        if mode == "url":
+            # URL-mode elicitations point the user to an external URL for
+            # sensitive out-of-band flows (OAuth, payment processing). The
+            # actual sensitive interaction happens out-of-band at the URL;
+            # the server later signals completion via an out-of-band
+            # notifications/elicitation/complete notification. We do NOT
+            # wait on that notification (it is server-driven and must not
+            # block indefinitely). Instead we surface the URL to the user
+            # via the existing consent flow and collect the same
+            # accept/decline/cancel choice, reusing the fail-closed
+            # normalization request_elicitation_consent already provides.
+            url = getattr(params, "url", "") or ""
+
+            # Sanitize the server-provided URL before surfacing it. The URL
+            # becomes a clickable link on gateway platforms, so reject
+            # dangerous schemes (javascript:, file:, data:) and require
+            # http/https. There is no pre-existing validator for elicitation
+            # URLs -- _validate_remote_mcp_url only covers configured server
+            # connection URLs -- so this is net-new sanitization.
+            sanitized_url = _sanitize_elicitation_url(url)
+            if sanitized_url is None:
+                logger.warning(
+                    "MCP server '%s' URL-mode elicitation rejected: "
+                    "unsafe scheme in %r",
+                    self.server_name, url[:200],
+                )
+                self.metrics["errors"] += 1
+                return ElicitResult(action="decline")
+
+            # Render the URL as a markdown link in the description slot
+            # (not the message slot). request_elicitation_consent maps
+            # message -> command, which gateway platforms render inside a
+            # fenced code block (non-clickable monospaced text); description
+            # -> description renders as free-flowing prose where markdown
+            # link syntax survives platform formatting and becomes a native
+            # hyperlink on Telegram/Slack/Discord, text (url) on WhatsApp,
+            # etc. The server-provided message goes in the message slot
+            # unchanged.
+            description = f"[Open URL]({sanitized_url})"
+
+            logger.info(
+                "MCP server '%s' URL-mode elicitation request: %s",
+                self.server_name, _sanitize_error(message)[:200],
+            )
+        else:
+            schema = getattr(params, "requested_schema", {}) or {}
+            description = _format_elicitation_schema_summary(schema, self.server_name)
+
+            logger.info(
+                "MCP server '%s' elicitation request: %s",
+                self.server_name, _sanitize_error(message)[:200],
+            )
 
         # Lazy import: tools.approval is imported very early during process
         # bootstrap; matching the lazy pattern used by _fire_approval_hook
@@ -1493,6 +1565,8 @@ class ElicitationHandler:
 
         if answer == "accept":
             self.metrics["accepted"] += 1
+            if mode == "url":
+                return ElicitResult(action="accept")
             return ElicitResult(action="accept", content={})
         if answer == "cancel":
             self.metrics["errors"] += 1
