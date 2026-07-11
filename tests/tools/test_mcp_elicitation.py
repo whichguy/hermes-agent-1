@@ -21,6 +21,7 @@ from mcp.types import ElicitResult  # noqa: E402  -- after importorskip
 from tools.mcp_tool import (  # noqa: E402
     ElicitationHandler,
     _format_elicitation_schema_summary,
+    _sanitize_elicitation_url,
 )
 
 
@@ -39,13 +40,13 @@ def _form_params(message="please confirm", schema=None):
     )
 
 
-def _url_params(message="open this url", url="https://example.com/auth", elicitation_id="e1"):
+def _url_params(message="open this url", url="https://example.com/auth", elicitationId="e1"):
     from types import SimpleNamespace
     return SimpleNamespace(
         mode="url",
         message=message,
         url=url,
-        elicitation_id=elicitation_id,
+        elicitationId=elicitationId,
     )
 
 
@@ -111,21 +112,275 @@ class TestElicitationHandlerFormMode:
         assert handler.metrics["errors"] == 1
 
 
-class TestElicitationHandlerFailureModes:
-    def test_url_mode_is_declined_without_prompting(self):
+class TestElicitationHandlerURLMode:
+    """URL-mode elicitations surface the server-provided URL through the
+    existing consent flow. The URL is sanitized (http/https, bounded length)
+    before being rendered as a markdown link in the description slot, and
+    the user's accept/decline/cancel choice is collected via the same
+    request_elicitation_consent router form-mode uses."""
+
+    def test_user_accepts_url_mode(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(
+            "authorize a payment",
+            url="https://payments.example.com/authorize",
+        )
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            return_value="accept",
+        ) as m:
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert isinstance(result, ElicitResult)
+        assert result.action == "accept"
+        assert result.content is None
+        assert handler.metrics["accepted"] == 1
+        assert handler.metrics["declined"] == 0
+        # The server message goes in the message slot.
+        assert m.call_args.args[0] == "authorize a payment"
+        # The URL is rendered as a markdown link in the description slot.
+        assert "[Open URL](https://payments.example.com/authorize)" == m.call_args.args[1]
+
+    def test_user_declines_url_mode(self):
         handler = ElicitationHandler("pay", {"timeout": 5})
         params = _url_params()
 
-        # If the handler tried to prompt, this would raise AssertionError
-        # because the side_effect treats the call as a test failure.
         with patch(
             "tools.approval.request_elicitation_consent",
-            side_effect=AssertionError("URL mode must not prompt"),
-        ):
+            return_value="decline",
+        ) as m:
             result = asyncio.run(handler(context=None, params=params))
 
         assert result.action == "decline"
         assert handler.metrics["declined"] == 1
+        # The consent router must still be invoked -- URL-mode is now real.
+        assert m.call_count == 1
+
+    def test_cancel_propagates_through_url_mode(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params()
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            return_value="cancel",
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "cancel"
+        assert handler.metrics["errors"] == 1
+
+    def test_exception_in_approval_fails_closed_to_decline_url_mode(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params()
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=RuntimeError("approval system blew up"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_timeout_returns_cancel_url_mode(self, monkeypatch):
+        monkeypatch.setattr(
+            ElicitationHandler, "_OUTER_TIMEOUT_GRACE_SECONDS", 0
+        )
+        handler = ElicitationHandler("pay", {"timeout": 0.05})
+        params = _url_params()
+
+        def stall(*_args, **_kwargs):
+            import time as _t
+            _t.sleep(2)
+            return "accept"
+
+        with patch("tools.approval.request_elicitation_consent", side_effect=stall):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "cancel"
+        assert handler.metrics["errors"] == 1
+
+    def test_server_message_passes_through_unchanged(self):
+        """The server-provided message goes in the message slot unchanged,
+        even when it contains special characters or is long."""
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        msg = "Please authorize $1,234.56 to merchant 'Acme Corp'"
+        params = _url_params(msg, url="https://pay.example.com/o")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            return_value="accept",
+        ) as m:
+            asyncio.run(handler(context=None, params=params))
+
+        assert m.call_args.args[0] == msg
+
+    def test_empty_message_falls_back_to_default(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(message="", url="https://pay.example.com/o")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            return_value="accept",
+        ) as m:
+            asyncio.run(handler(context=None, params=params))
+
+        assert "pay" in m.call_args.args[0]
+
+
+class TestElicitationHandlerURLModeSanitization:
+    """The server-provided URL must be sanitized before being surfaced.
+    Dangerous schemes (javascript:, file:, data:) are rejected with a
+    decline and never reach the consent router."""
+
+    def test_javascript_scheme_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(
+            "click me",
+            url="javascript:alert(document.cookie)",
+        )
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("unsafe URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+        assert handler.metrics["declined"] == 0
+
+    def test_file_scheme_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url="file:///etc/passwd")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("unsafe URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_data_scheme_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url="data:text/html,<script>alert(1)</script>")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("unsafe URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_empty_url_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url="")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("empty URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_non_string_url_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url=None)
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("non-string URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_missing_host_declined_without_prompting(self):
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url="https:///path-only")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            side_effect=AssertionError("missing-host URL must not prompt"),
+        ):
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "decline"
+        assert handler.metrics["errors"] == 1
+
+    def test_http_url_accepted(self):
+        """http:// URLs are valid (not just https://)."""
+        handler = ElicitationHandler("pay", {"timeout": 5})
+        params = _url_params(url="http://localhost:8080/auth")
+
+        with patch(
+            "tools.approval.request_elicitation_consent",
+            return_value="accept",
+        ) as m:
+            result = asyncio.run(handler(context=None, params=params))
+
+        assert result.action == "accept"
+        assert "[Open URL](http://localhost:8080/auth)" == m.call_args.args[1]
+
+
+class TestSanitizeElicitationURL:
+    """Unit tests for the _sanitize_elicitation_url helper."""
+
+    def test_https_url_returned(self):
+        assert _sanitize_elicitation_url("https://example.com/path") == "https://example.com/path"
+
+    def test_http_url_returned(self):
+        assert _sanitize_elicitation_url("http://localhost:8080") == "http://localhost:8080"
+
+    def test_whitespace_stripped(self):
+        assert _sanitize_elicitation_url("  https://example.com  ") == "https://example.com"
+
+    def test_javascript_rejected(self):
+        assert _sanitize_elicitation_url("javascript:alert(1)") is None
+
+    def test_file_rejected(self):
+        assert _sanitize_elicitation_url("file:///etc/passwd") is None
+
+    def test_data_rejected(self):
+        assert _sanitize_elicitation_url("data:text/html,hello") is None
+
+    def test_ftp_rejected(self):
+        assert _sanitize_elicitation_url("ftp://example.com/file") is None
+
+    def test_empty_string_rejected(self):
+        assert _sanitize_elicitation_url("") is None
+
+    def test_whitespace_only_rejected(self):
+        assert _sanitize_elicitation_url("   ") is None
+
+    def test_non_string_rejected(self):
+        assert _sanitize_elicitation_url(None) is None
+        assert _sanitize_elicitation_url(123) is None
+        assert _sanitize_elicitation_url(["https://x.com"]) is None
+
+    def test_missing_host_rejected(self):
+        assert _sanitize_elicitation_url("https:///path") is None
+
+    def test_missing_scheme_rejected(self):
+        assert _sanitize_elicitation_url("example.com/path") is None
+
+    def test_uppercase_scheme_accepted(self):
+        assert _sanitize_elicitation_url("HTTPS://EXAMPLE.COM") == "HTTPS://EXAMPLE.COM"
+
+    def test_oversized_url_rejected(self):
+        long_url = "https://example.com/" + "a" * 2100
+        assert _sanitize_elicitation_url(long_url) is None
+
+
+class TestElicitationHandlerFailureModes:
 
     def test_exception_in_approval_fails_closed_to_decline(self):
         handler = ElicitationHandler("pay", {"timeout": 5})
