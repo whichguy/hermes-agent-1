@@ -279,6 +279,118 @@ def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judg
     return qs, meta
 
 
+# ── opt-in paired answer-vs-assume ablation ──────────────────────────────────
+
+def generate_shared_questions(task, k, skill_model, max_rounds=None):
+    """Generate the single question set shared by every ablation arm for one task."""
+    cfg = infogain.eval_cfg(skill_model, pin=infogain.PIN_ALL)
+    cfg["families"] = infogain.families_cfg(families_model=skill_model, firstorder="off")
+    if max_rounds:
+        cfg["max_rounds"] = max_rounds
+    result = infogain.run(task["ambiguous_prompt"], cfg)
+    topk = result["bucket"][:k]
+    topk_questions = {rec["question"] for rec in topk}
+    lowevsi = sorted(
+        (rec for rec in result["all_scored"]
+         if rec["question"] not in topk_questions and rec.get("recommendation") != "DERIVED"),
+        key=lambda rec: rec.get("value", 0.0),
+    )[:k]
+    return {
+        "topk": topk,
+        "lowevsi": lowevsi,
+        "all_scored": result.get("all_scored", []),
+        "q_values": [round(rec.get("value", 0.0), 3) for rec in topk],
+        "evsis": [round(rec.get("evsi", 0.0), 3) for rec in topk],
+        "usage": result.get("usage", {}),
+    }
+
+
+def _assume_qa(recs):
+    """Inject nbq's projected modal answer without another model call."""
+    qa = []
+    for rec in recs:
+        modal = rec.get("modal_answer") or {}
+        answer = (modal.get("answer") or "").strip()
+        qa.append({"question": rec["question"], "answer": answer or NO_ANSWER,
+                   "revealed": bool(answer), "modal_missing": not bool(answer)})
+    return qa
+
+
+def _oracle_qa(recs, hidden_spec, sim_model):
+    return [simulate_user(hidden_spec, rec["question"], sim_model) for rec in recs]
+
+
+def run_ablation_task(task, k, models, arms, max_rounds=None):
+    """Run opt-in paired arms, reusing exactly one nbq generation result per task."""
+    allowed = {"baseline", "assume", "answer", "answer-lowevsi"}
+    unknown = set(arms) - allowed
+    if unknown:
+        raise ValueError(f"unknown ablation arm {next(iter(unknown))!r}")
+    shared = generate_shared_questions(task, k, models["skill"], max_rounds)
+
+    rows = []
+    for arm in arms:
+        t0 = time.time()
+        if arm == "baseline":
+            injected_recs, qa = [], []
+        elif arm == "assume":
+            injected_recs = shared["topk"]
+            qa = _assume_qa(injected_recs)
+        elif arm == "answer":
+            injected_recs = shared["topk"]
+            qa = _oracle_qa(injected_recs, task["hidden_spec"], models["sim"])
+        else:  # answer-lowevsi
+            injected_recs = shared["lowevsi"]
+            qa = _oracle_qa(injected_recs, task["hidden_spec"], models["sim"])
+        solved = solve_and_score(task, qa, models["solver"])
+        rows.append({
+            "task": task["id"], "arm": arm, "k": k,
+            "questions": [rec["question"] for rec in injected_recs], "qa": qa,
+            "revealed": sum(1 for entry in qa if entry["revealed"]),
+            "unanswerable": sum(1 for entry in qa if not entry["revealed"]),
+            "frac": solved["frac"], "per_test": solved["per_test"], "code": solved["code"],
+            "meta": {"q_values": [round(rec.get("value", 0.0), 3) for rec in injected_recs],
+                     "evsis": [round(rec.get("evsi", 0.0), 3) for rec in injected_recs],
+                     "usage": shared["usage"],
+                     "injected_values": [round(rec.get("value", 0.0), 3)
+                                         for rec in injected_recs],
+                     "injected_evsis": [round(rec.get("evsi", 0.0), 3)
+                                        for rec in injected_recs]},
+            "shared_topk": [rec["question"] for rec in shared["topk"]],
+            "elapsed_s": round(time.time() - t0, 1),
+        })
+    return rows
+
+
+def assert_paired_design(rows):
+    """Fail closed if a paired contrast did not use the claimed question sets."""
+    by_task = {}
+    for row in rows:
+        if "error" in row:
+            raise ValueError(f"paired-design unavailable for task {row.get('task')!r} "
+                             f"arm {row.get('arm')!r}: {row['error']}")
+        by_task.setdefault(row["task"], {})[row["arm"]] = row
+    for task, arms in by_task.items():
+        assume, answer = arms.get("assume"), arms.get("answer")
+        if assume and answer:
+            assume_shared = assume.get("shared_topk")
+            answer_shared = answer.get("shared_topk")
+            if (not isinstance(assume.get("questions"), list)
+                    or not isinstance(answer.get("questions"), list)
+                    or not isinstance(assume_shared, list)
+                    or not isinstance(answer_shared, list)
+                    or assume.get("questions") != answer.get("questions")
+                    or assume.get("questions") != assume_shared
+                    or answer.get("questions") != answer_shared):
+                raise ValueError(f"paired-design mismatch for task {task!r}: assume/answer/shared_topk")
+        lowevsi = arms.get("answer-lowevsi")
+        if lowevsi:
+            low_questions, shared = lowevsi.get("questions"), lowevsi.get("shared_topk")
+            if (not isinstance(low_questions, list) or not isinstance(shared, list)
+                    or set(low_questions) & set(shared)):
+                raise ValueError(f"paired-design mismatch for task {task!r}: low-EVSI overlaps top-K")
+
+
 _NUMBERED = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*$")
 
 
@@ -466,7 +578,7 @@ def main(argv=None):
     ap.add_argument("--task-ids", nargs="*", default=None)
     ap.add_argument("--bank", choices=["micro", "agentic", "both"], default="micro",
                     help="task tier: micro-functions, the #31 agentic script tier, or both")
-    ap.add_argument("--arms", nargs="*", default=["baseline", "nbq", "zeroshot", "prompt-evsi"])
+    ap.add_argument("--arms", nargs="*", default=None)
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--skill-model", default="deepseek",
                     help="model for the skill run / question generation arms")
@@ -475,9 +587,15 @@ def main(argv=None):
     ap.add_argument("--max-rounds", type=int, default=None, help="cap the skill's rounds")
     ap.add_argument("--strict-preflight", action="store_true",
                     help="run 8 forced-choice calls per model (off by default)")
+    ap.add_argument("--paired-ablation", action="store_true",
+                    help="run the opt-in shared-question answer-vs-assume ablation")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
+    if args.arms is None:
+        args.arms = (["baseline", "assume", "answer", "answer-lowevsi"]
+                     if args.paired_ablation
+                     else ["baseline", "nbq", "zeroshot", "prompt-evsi"])
 
     pool = (outcome_bank.TASKS if args.bank == "micro"
             else outcome_bank.AGENTIC if args.bank == "agentic"
@@ -500,23 +618,44 @@ def main(argv=None):
             discrimination_preflight(m, role)
 
     rows, t0 = [], time.time()
-    for task in tasks:
-        for arm in args.arms:
-            print(f"… {task['id']} × {arm}", file=sys.stderr, flush=True)
+    paired_design = None
+    if args.paired_ablation:
+        for task in tasks:
+            print(f"… {task['id']} × paired-ablation", file=sys.stderr, flush=True)
             try:
-                rows.append(run_cell(task, arm, args.k, models, args.max_rounds))
+                rows.extend(run_ablation_task(task, args.k, models, args.arms, args.max_rounds))
             except Exception as e:
-                rows.append({"task": task["id"], "arm": arm, "error": str(e)})
+                rows.extend({"task": task["id"], "arm": arm, "error": str(e)}
+                            for arm in args.arms)
             if args.out:
                 with open(args.out, "w") as f:
                     json.dump({"rows": rows, "partial": True, "k": args.k,
                                "models": models}, f, indent=1)
+        try:
+            assert_paired_design(rows)
+            paired_design = {"paired_design_valid": True}
+        except ValueError as e:
+            paired_design = {"paired_design_valid": False, "error": str(e)}
+    else:
+        for task in tasks:
+            for arm in args.arms:
+                print(f"… {task['id']} × {arm}", file=sys.stderr, flush=True)
+                try:
+                    rows.append(run_cell(task, arm, args.k, models, args.max_rounds))
+                except Exception as e:
+                    rows.append({"task": task["id"], "arm": arm, "error": str(e)})
+                if args.out:
+                    with open(args.out, "w") as f:
+                        json.dump({"rows": rows, "partial": True, "k": args.k,
+                                   "models": models}, f, indent=1)
     stats = analyze(rows)
     if args.out:
+        saved = {"rows": rows, "stats": stats, "partial": False, "k": args.k,
+                 "models": models, "elapsed_s": round(time.time() - t0, 1)}
+        if paired_design is not None:
+            saved.update(paired_design)
         with open(args.out, "w") as f:
-            json.dump({"rows": rows, "stats": stats, "partial": False, "k": args.k,
-                       "models": models, "elapsed_s": round(time.time() - t0, 1)},
-                      f, indent=1)
+            json.dump(saved, f, indent=1)
         print(f"saved {args.out}", file=sys.stderr)
     return 0
 

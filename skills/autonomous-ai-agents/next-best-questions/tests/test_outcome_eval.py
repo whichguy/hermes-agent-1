@@ -2,6 +2,8 @@
 
 import os
 import sys
+import json
+import tempfile
 import unittest
 from unittest import mock
 
@@ -13,6 +15,8 @@ try:
     import outcome_bank
     import outcome_eval
     import pipeline
+    import analyze_ablation
+    import stage0_precheck
     _OK = True
 except Exception:  # pragma: no cover
     _OK = False
@@ -168,6 +172,149 @@ class TestArms(unittest.TestCase):
         self.assertIn("Expected Value of Sample Information", calls[0])
         self.assertIn("DERIVE-don't-ask", calls[0])
         self.assertEqual(qs, ["What order?", "Case sensitivity?"])
+
+
+@unittest.skipUnless(_OK, "skill scripts not importable")
+class TestPairedAblation(unittest.TestCase):
+    def _models(self):
+        return {"skill": "skill", "solver": "solver", "sim": "sim"}
+
+    @staticmethod
+    def _result():
+        high = [
+            {"question": "high one?", "value": 0.9, "evsi": 0.8,
+             "modal_answer": {"answer": "modal high one"}},
+            {"question": "high two?", "value": 0.8, "evsi": 0.7,
+             "modal_answer": {"answer": "modal high two"}},
+        ]
+        low = [
+            {"question": "low one?", "value": 0.1, "evsi": 0.1,
+             "modal_answer": {"answer": "modal low one"}},
+            {"question": "low two?", "value": 0.2, "evsi": 0.2,
+             "modal_answer": {"answer": "modal low two"}},
+        ]
+        return {"bucket": high, "all_scored": high + list(reversed(low)),
+                "derived": [], "usage": {"calls": 7}}
+
+    @staticmethod
+    def _solved():
+        return {"code": "", "frac": 1.0, "per_test": []}
+
+    def test_shared_question_set_is_identical_across_arms(self):
+        task = outcome_bank.TASKS[0]
+        calls = []
+        def fake_sim(spec, question, model):
+            calls.append(question)
+            return {"question": question, "answer": "oracle " + question, "revealed": True}
+        with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()) as runm, \
+             mock.patch.object(outcome_eval, "simulate_user", side_effect=fake_sim), \
+             mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
+            rows = outcome_eval.run_ablation_task(task, 2, self._models(), ["assume", "answer"])
+        self.assertEqual(runm.call_count, 1)
+        assume, answer = rows
+        self.assertEqual(assume["questions"], ["high one?", "high two?"])
+        self.assertEqual(assume["questions"], answer["questions"])
+        self.assertEqual(answer["questions"], answer["shared_topk"])
+        self.assertEqual(calls, ["high one?", "high two?"])  # no extra assume-arm oracle calls
+        outcome_eval.assert_paired_design(rows)
+
+    def test_assume_injects_modal_without_oracle(self):
+        task = outcome_bank.TASKS[0]
+        with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()), \
+             mock.patch.object(outcome_eval, "simulate_user") as simulate, \
+             mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
+            row = outcome_eval.run_ablation_task(task, 2, self._models(), ["assume"])[0]
+        self.assertEqual([x["answer"] for x in row["qa"]],
+                         ["modal high one", "modal high two"])
+        simulate.assert_not_called()
+
+    def test_answer_lowevsi_uses_disjoint_low_value_tail(self):
+        task = outcome_bank.TASKS[0]
+        with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()), \
+             mock.patch.object(outcome_eval, "simulate_user",
+                               side_effect=lambda spec, q, model: {"question": q, "answer": "a",
+                                                                   "revealed": True}), \
+             mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
+            row = outcome_eval.run_ablation_task(task, 2, self._models(), ["answer-lowevsi"])[0]
+        self.assertEqual(row["questions"], ["low one?", "low two?"])
+        self.assertFalse(set(row["questions"]) & set(row["shared_topk"]))
+
+    def test_matched_prompt_scaffolding(self):
+        task = outcome_bank.TASKS[0]
+        recs = self._result()["bucket"]
+        assume = outcome_eval._assume_qa(recs)
+        answer = [{"question": rec["question"], "answer": "oracle " + rec["question"],
+                   "revealed": True} for rec in recs]
+        left = outcome_eval.solve_prompt(task, assume)
+        right = outcome_eval.solve_prompt(task, answer)
+        for rec in recs:
+            left = left.replace("modal " + rec["question"].replace("?", ""), "SENTINEL")
+            right = right.replace("oracle " + rec["question"], "SENTINEL")
+        self.assertEqual(left, right)
+
+    def test_paired_design_guard_rejects_mismatch(self):
+        with self.assertRaises(ValueError):
+            outcome_eval.assert_paired_design([
+                {"task": "t", "arm": "assume", "questions": ["a"], "shared_topk": ["a"]},
+                {"task": "t", "arm": "answer", "questions": ["b"], "shared_topk": ["a"]},
+            ])
+
+    def test_main_is_inert_without_paired_flag(self):
+        task = outcome_bank.TASKS[0]
+        row = {"task": task["id"], "arm": "baseline", "qa": [], "questions": [],
+               "revealed": 0, "unanswerable": 0, "frac": 1.0, "per_test": [], "code": "",
+               "meta": {}, "elapsed_s": 0.0}
+        with mock.patch.object(outcome_eval.pipeline, "resolve_alias", side_effect=lambda model: model), \
+             mock.patch.object(outcome_eval, "preflight_model"), \
+             mock.patch.object(outcome_eval, "run_cell", return_value=row) as run_cell, \
+             mock.patch.object(outcome_eval, "generate_shared_questions") as shared, \
+             mock.patch.object(outcome_eval, "run_ablation_task") as ablation:
+            self.assertEqual(outcome_eval.main(["--task-ids", task["id"], "--arms", "baseline"]), 0)
+        run_cell.assert_called_once()
+        shared.assert_not_called()
+        ablation.assert_not_called()
+
+    @staticmethod
+    def _ablation_rows(proceed):
+        rows = []
+        for i in range(4):
+            task = f"t{i}"
+            answer_frac = 1.0 if proceed else 0.0
+            for arm, frac, questions, revealed in [
+                ("baseline", 0.5, [], 0), ("assume", 0.0, ["q"], 0),
+                ("answer", answer_frac, ["q"], 1), ("answer-lowevsi", 0.0, ["low"], 1),
+            ]:
+                rows.append({"task": task, "arm": arm, "frac": frac, "questions": questions,
+                             "shared_topk": ["q"], "revealed": revealed,
+                             "meta": {"injected_values": [i + 1], "injected_evsis": [i + 1]}})
+        return {"rows": rows}
+
+    def test_analyze_ablation_proceed_math(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "rows.json")
+            with open(path, "w") as fh:
+                json.dump(self._ablation_rows(True), fh)
+            with open(path) as fh:
+                proceed = analyze_ablation.assemble_stats(json.load(fh))
+            self.assertEqual(proceed["primary"]["answer_minus_assume"]["wins"], 4)
+            self.assertEqual(proceed["primary"]["answer_minus_assume"]["mean"], 1.0)
+            self.assertEqual(proceed["verdict"], "PROCEED")
+
+    def test_analyze_ablation_null_math(self):
+        null = analyze_ablation.assemble_stats(self._ablation_rows(False))
+        self.assertEqual(null["verdict"], "NULL")
+
+    def test_stage0_precheck_go_and_no_go(self):
+        rows = []
+        for i, revealed in enumerate((True, True, False)):
+            rows.append({"task": f"t{i}", "arm": "nbq", "qa": [{"revealed": revealed}],
+                         "meta": {"q_values": [0.7]}})
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "historical.json")
+            with open(path, "w") as fh:
+                json.dump({"rows": rows}, fh)
+            self.assertEqual(stage0_precheck.assemble_stats([path], threshold=0.5)["verdict"], "GO")
+            self.assertEqual(stage0_precheck.assemble_stats([path], threshold=0.8)["verdict"], "NO-GO")
 
 
 _AGENTIC_REF = {
