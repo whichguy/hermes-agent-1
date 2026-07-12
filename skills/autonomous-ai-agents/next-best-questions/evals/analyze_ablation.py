@@ -134,7 +134,37 @@ def _fmt_primary(label, stats):
             f"sign_p={stats['sign_p']:.4f}")
 
 
-def format_stats(stats):
+def _fmt_usage(usage):
+    return (f"calls={usage.get('calls', 0)} input_tokens={usage.get('input_tokens', 0)} "
+            f"output_tokens={usage.get('output_tokens', 0)} "
+            f"model_seconds={usage.get('model_seconds', 0)}")
+
+
+def _cost_lines(data):
+    rows = data.get("rows", [])
+    schema = data.get("ablation_schema")
+    by = _by_arm(rows)
+    lines = ["COSTS"]
+    if schema == 2:
+        generation_usage = data.get("generation_usage") or {}
+        shared = {field: sum(usage.get(field, 0) for usage in generation_usage.values())
+                  for field in ("calls", "input_tokens", "output_tokens", "model_seconds")}
+        lines.append("shared once-per-task generation (sum): " + _fmt_usage(shared))
+        label = "MARGINAL mean per arm"
+    else:
+        label = "shared (legacy schema) mean per arm"
+    for arm in sorted(by):
+        usages = [row.get("meta", {}).get("usage") for row in by[arm].values()]
+        usages = [usage for usage in usages if isinstance(usage, dict)]
+        if not usages:
+            continue
+        mean = {field: sum(usage.get(field, 0) for usage in usages) / len(usages)
+                for field in ("calls", "input_tokens", "output_tokens", "model_seconds")}
+        lines.append(f"{label} {arm}: " + _fmt_usage(mean))
+    return lines
+
+
+def format_stats(stats, data=None):
     primary = stats["primary"]
     lines = ["ANSWER-VS-ASSUME PAIRED ABLATION", _fmt_primary(
         "Δpass(answer − assume)", primary["answer_minus_assume"]), _fmt_primary(
@@ -155,6 +185,8 @@ def format_stats(stats):
     validity = stats["paired_design"]
     lines.append("PAIRED-DESIGN: VALID" if validity["valid"] else
                  f"PAIRED-DESIGN: INVALID offending task ids: {validity['offending_task_ids']}")
+    if data is not None:
+        lines.extend(_cost_lines(data))
     lines.append(f"VERDICT: {stats['verdict']}")
     return "\n".join(lines)
 
@@ -166,7 +198,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         with open(args.input, "r", encoding="utf-8") as fh:
-            stats = assemble_stats(json.load(fh))
+            data = json.load(fh)
+        stats = assemble_stats(data)
         if args.json_out:
             with open(args.json_out, "w", encoding="utf-8") as fh:
                 json.dump(stats, fh, indent=2, sort_keys=True)
@@ -174,7 +207,7 @@ def main(argv=None):
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    print(format_stats(stats))
+    print(format_stats(stats, data))
     return 0
 
 

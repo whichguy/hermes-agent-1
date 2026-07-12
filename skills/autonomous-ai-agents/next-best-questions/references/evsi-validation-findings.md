@@ -867,6 +867,29 @@ refuses intent cannot rank intent-askers above trivia-askers); (2) the **relentl
 diagnostic** (confirm high-EVSI intent questions get `via:"assumed"` in live relentless runs) remains
 the candidate-2 route — candidate 2 is neither proven nor killed by this lap.
 
+### Retro addendum (post-hoc, hypothesis-generating — not pre-registered)
+
+Zero-cost retro probes on the durable gate JSON (`~/.hermes/outcome_eval_iter4.json`; no model
+calls), splitting the 34 tasks by whether the oracle revealed ≥1 of nbq's top-K questions
+(14 revealed / 20 unrevealed):
+
+- **Exposure-not-answers.** On the 20 tasks where the oracle revealed NOTHING, the `answer` arm
+  injected pure refusals ("The spec doesn't say.") — and still beat baseline **+0.143** (5W/2L)
+  and beat `assume` (4W/1L, +0.077). Real oracle content on top added little (+0.181 vs baseline
+  on the revealed tasks). Surfacing nbq's top-K QUESTIONS as explicit unknowns appears to carry
+  most of the single-shot value; the answers add little.
+- **Modal defaults are a wash vs baseline** (+0.067, 4W/4L on both splits) and worse than
+  admitting ignorance. Rough agreement between nbq's guessed default and the oracle's real answer
+  on revealed top-K questions: ~1/19.
+- **EVSI↔realized-Δ stays negative within both subsets** (ρ ≈ −0.23 revealed / −0.16 unrevealed)
+  — the negative correlation is not purely refusal-mass.
+
+Caveats: this is a post-hoc subgroup analysis conditioning on oracle behavior (selection effects
+possible — reveal status is not randomized); small n; many ties. It changes NO verdict — the
+pre-registered ATTRIBUTION_FAIL stands. Its role is to generate the iteration-five hypothesis:
+a pre-registered `questions-only` arm (inject top-K questions as explicit "UNKNOWN — handle
+sensibly", zero oracle calls) testing whether exposure alone reproduces the answer arm's gain.
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it

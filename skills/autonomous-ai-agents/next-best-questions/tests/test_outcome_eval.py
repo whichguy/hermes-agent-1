@@ -209,7 +209,8 @@ class TestPairedAblation(unittest.TestCase):
         with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()) as runm, \
              mock.patch.object(outcome_eval, "simulate_user", side_effect=fake_sim), \
              mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
-            rows = outcome_eval.run_ablation_task(task, 2, self._models(), ["assume", "answer"])
+            rows, _gen = outcome_eval.run_ablation_task(
+                task, 2, self._models(), ["assume", "answer"])
         self.assertEqual(runm.call_count, 1)
         assume, answer = rows
         self.assertEqual(assume["questions"], ["high one?", "high two?"])
@@ -223,7 +224,8 @@ class TestPairedAblation(unittest.TestCase):
         with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()), \
              mock.patch.object(outcome_eval, "simulate_user") as simulate, \
              mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
-            row = outcome_eval.run_ablation_task(task, 2, self._models(), ["assume"])[0]
+            rows, _gen = outcome_eval.run_ablation_task(task, 2, self._models(), ["assume"])
+            row = rows[0]
         self.assertEqual([x["answer"] for x in row["qa"]],
                          ["modal high one", "modal high two"])
         simulate.assert_not_called()
@@ -235,7 +237,9 @@ class TestPairedAblation(unittest.TestCase):
                                side_effect=lambda spec, q, model: {"question": q, "answer": "a",
                                                                    "revealed": True}), \
              mock.patch.object(outcome_eval, "solve_and_score", return_value=self._solved()):
-            row = outcome_eval.run_ablation_task(task, 2, self._models(), ["answer-lowevsi"])[0]
+            rows, _gen = outcome_eval.run_ablation_task(
+                task, 2, self._models(), ["answer-lowevsi"])
+            row = rows[0]
         self.assertEqual(row["questions"], ["low one?", "low two?"])
         self.assertFalse(set(row["questions"]) & set(row["shared_topk"]))
 
@@ -258,6 +262,96 @@ class TestPairedAblation(unittest.TestCase):
                 {"task": "t", "arm": "assume", "questions": ["a"], "shared_topk": ["a"]},
                 {"task": "t", "arm": "answer", "questions": ["b"], "shared_topk": ["a"]},
             ])
+
+    def test_paired_design_skips_errored_tasks(self):
+        rows = [
+            {"task": "good", "arm": "assume", "questions": ["q"], "shared_topk": ["q"]},
+            {"task": "good", "arm": "answer", "questions": ["q"], "shared_topk": ["q"]},
+        ]
+        rows.extend({"task": "flaky", "arm": arm, "error": "network"}
+                    for arm in ("baseline", "assume", "answer", "answer-lowevsi"))
+        self.assertEqual(outcome_eval.assert_paired_design(rows), ["flaky"])
+
+    def test_ablation_usage_is_per_arm_marginal(self):
+        task = outcome_bank.TASKS[0]
+        pipeline.reset_usage()
+
+        def increment():
+            with pipeline._USAGE_LOCK:
+                pipeline._USAGE["calls"] += 1
+
+        def fake_sim(spec, question, model):
+            increment()
+            return {"question": question, "answer": "oracle", "revealed": True}
+
+        def fake_solve(*args):
+            increment()
+            return self._solved()
+
+        with mock.patch.object(outcome_eval.infogain, "run", return_value=self._result()), \
+             mock.patch.object(outcome_eval, "simulate_user", side_effect=fake_sim), \
+             mock.patch.object(outcome_eval, "solve_and_score", side_effect=fake_solve):
+            rows, gen = outcome_eval.run_ablation_task(
+                task, 2, self._models(),
+                ["baseline", "assume", "answer", "answer-lowevsi"])
+        self.assertEqual([row["meta"]["usage"]["calls"] for row in rows], [1, 1, 3, 3])
+        self.assertEqual(gen, {"calls": 7})
+
+    def test_main_records_ablation_schema_and_generation_usage(self):
+        task = outcome_bank.TASKS[0]
+
+        def fake_ablation(current_task, k, models, arms, max_rounds):
+            rows = []
+            for arm in arms:
+                questions = ["low"] if arm == "answer-lowevsi" else ([] if arm == "baseline" else ["q"])
+                rows.append({"task": current_task["id"], "arm": arm, "k": k,
+                             "questions": questions, "qa": [], "revealed": 0,
+                             "unanswerable": 0, "frac": 1.0, "per_test": [], "code": "",
+                             "meta": {"usage": {}}, "shared_topk": ["q"], "elapsed_s": 0.0})
+            return rows, {"calls": 7}
+
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "ablation.json")
+            with mock.patch.object(outcome_eval.pipeline, "resolve_alias", side_effect=lambda model: model), \
+                 mock.patch.object(outcome_eval, "preflight_model"), \
+                 mock.patch.object(outcome_eval, "run_ablation_task", side_effect=fake_ablation):
+                self.assertEqual(outcome_eval.main(
+                    ["--paired-ablation", "--task-ids", task["id"], "--out", path]), 0)
+            with open(path) as fh:
+                saved = json.load(fh)
+        self.assertEqual(saved["ablation_schema"], 2)
+        self.assertEqual(saved["generation_usage"], {task["id"]: {"calls": 7}})
+
+    def test_analyzer_schema_read_does_not_change_math(self):
+        legacy = self._ablation_rows(True)
+        v2 = json.loads(json.dumps(legacy))
+        v2.update({"ablation_schema": 2, "generation_usage": {"t0": {"calls": 7}}})
+        legacy_stats = analyze_ablation.assemble_stats(legacy)
+        v2_stats = analyze_ablation.assemble_stats(v2)
+        self.assertEqual(legacy_stats["verdict"], v2_stats["verdict"])
+        for name in ("answer_minus_assume", "answer_minus_answer_lowevsi"):
+            self.assertEqual(legacy_stats["primary"][name]["mean"],
+                             v2_stats["primary"][name]["mean"])
+
+    def test_analyzer_cost_labels_support_both_schemas(self):
+        legacy = self._ablation_rows(True)
+        legacy["rows"][0]["meta"]["usage"] = {"calls": 2}
+        v2 = json.loads(json.dumps(legacy))
+        v2.update({"ablation_schema": 2, "generation_usage": {"t0": {"calls": 7}}})
+        stats = analyze_ablation.assemble_stats(legacy)
+        self.assertIn("shared (legacy schema) mean per arm", analyze_ablation.format_stats(stats, legacy))
+        self.assertIn("shared once-per-task generation", analyze_ablation.format_stats(stats, v2))
+        self.assertIn("MARGINAL mean per arm", analyze_ablation.format_stats(stats, v2))
+
+    def test_nbq_cfg_preserves_firstorder_and_optional_round_limit(self):
+        with mock.patch.object(outcome_eval.infogain, "eval_cfg", side_effect=lambda *args, **kwargs: {}):
+            off = outcome_eval._nbq_cfg("m")
+            on = outcome_eval._nbq_cfg("m", firstorder=True)
+            limited = outcome_eval._nbq_cfg("m", max_rounds=4)
+        self.assertEqual(off["families"]["firstorder"], "off")
+        self.assertEqual(on["families"]["firstorder"], "on")
+        self.assertNotIn("max_rounds", off)
+        self.assertEqual(limited["max_rounds"], 4)
 
     def test_main_is_inert_without_paired_flag(self):
         task = outcome_bank.TASKS[0]

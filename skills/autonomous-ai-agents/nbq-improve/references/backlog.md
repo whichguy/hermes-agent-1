@@ -2,6 +2,22 @@
 
 This is a living ranked list. Rank by expected value ÷ evaluation cost, highest first.
 
+0. **[NEW TOP — iteration five] `questions-only` arm gate (the exposure hypothesis).** Backed by the
+   iter-4 retro addendum (post-hoc, `evsi-validation-findings.md` §Retro addendum): on the 20 tasks
+   where the oracle revealed NOTHING, the `answer` arm injected pure refusals yet still beat baseline
+   +0.143 and beat `assume` +0.077 — surfacing nbq's top-K QUESTIONS as explicit unknowns appears to
+   carry most of the single-shot value; the oracle answers add little (+0.181 on revealed tasks).
+   **Pre-register** (per house rules; this is NOT yet greenlit to build) a fifth arm: inject nbq's
+   top-K questions as explicit "UNKNOWN — handle sensibly", **zero oracle calls**, shared-question
+   paired design (reuse `--paired-ablation`'s one-generation-per-task substrate). Primary:
+   Δpass(questions-only − baseline) > 0 with wins ≥ 2× losses AND mean-clears-SE (does exposure alone
+   reproduce the answer arm's gain?) and Δpass(answer − questions-only) (does oracle content add
+   anything beyond exposure?). Cheap: no new model calls beyond the shared generation + one solve/arm.
+   **This also reshapes the queued headroom diagnostic (item below):** if exposure is the active
+   ingredient, the live-relentless check must confirm relentless SURFACES the unknowns to the planner
+   (as explicit open questions), not merely that high-EVSI questions get `via:"assumed"`. Caveat
+   inherited: the retro finding conditions on oracle behavior (selection effects); the pre-registered
+   arm is what can turn it into a verdict.
 1. **#30 answerability weighting — PARKED AGAIN 2026-07-04 (iteration two): premise falsified for
    free.** The re-open condition (unanswerable 77% > 50%) was met, but a zero-cost retro probe of the
    objective corpus did NOT support #30's premise ("kept high-EVSI unanswerable questions cause
@@ -53,6 +69,38 @@ This is a living ranked list. Rank by expected value ÷ evaluation cost, highest
 5. **Prompt distillation — unblocked by the #32 no-adopt (the value model is not the gap), lower
    priority than #30.** Re-scope the certified-prompt path against whatever answerability mechanism
    #30 lands.
+
+## Iteration-five queue (each needs its own pre-registration per house rules)
+
+Seeded by the iteration-four verdict + retro addendum (2026-07-11). Ranked; the `questions-only` arm
+(item 0 above) is the lap-five lead.
+
+1. **Headroom diagnostic — RESHAPED by the exposure finding.** Original: a few live relentless runs
+   confirming high-EVSI intent questions get `via:"assumed"` today. Reshaped: also confirm whether
+   relentless SURFACES those unknowns to the planner (renders them as explicit open questions), not
+   just that they are silently assumed. If exposure (item 0) is the active ingredient, "surfaced vs
+   swallowed" is the load-bearing distinction, not `via:"assumed"` prevalence. Cheap, observational.
+2. **Matched-answerability attribution control.** `answer-lowevsi` conflates ranking quality with
+   answerability (the tail is more spec-answerable, so it wins for a reason orthogonal to nbq's
+   ranking). Design an arm that holds answerability fixed across the compared question sets (e.g.
+   match top-K vs tail on oracle-reveal rate before comparing), so a future attribution test measures
+   ranking, not answerability.
+3. **`--reps` + paired seeds for power.** iter-4 primary was single-rep at n=34 (sign_p 0.146; many
+   ties). Add repetition support (paired seeds, aggregate across reps) so a future gate can clear
+   significance rather than reporting directional-only deltas.
+4. **Substrate redesign (spec ⊃ tests / intent-holding persona oracle).** The hidden-spec oracle
+   cannot reward intent questions (the spec rarely encodes intent), so this substrate structurally
+   cannot attribute nbq's value. Options: a hidden_spec that strictly supersets the visible tests, or
+   an intent-holding persona oracle decoupled from the objective checks. Build only if the candidate-2
+   line still needs the objective harness after iteration five.
+5. **Installed-twin reconciliation.** The installed tree
+   (`~/.hermes/skills/autonomous-ai-agents/...`) carries a pre-existing `test_infogain` failure
+   (17F/2E) against its OWN pairwise modules that pre-dates this lap — reconcile the installed twin
+   against canonical (it is out of scope for the iter-4 lap's `test_outcome_eval` sync).
+6. **Protocol substrate-exit criterion (nbq-improve SKILL edit).** After N consecutive laps where the
+   harness structurally CANNOT observe the mechanism under test (laps 1–4 all hit intent≠state /
+   substrate saturation), the protocol should require the NEXT lap to change SUBSTRATE, not just the
+   lever. This is a `nbq-improve/SKILL.md` edit → bumps nbq-improve's own version when it lands.
 
 ## Agentic-workflow integration candidates
 

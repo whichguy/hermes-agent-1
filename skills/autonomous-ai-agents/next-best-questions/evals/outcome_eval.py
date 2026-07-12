@@ -260,13 +260,18 @@ def solve_and_score(task, qa, solver_model, timeout=240):
 
 # ── question sources (the arms' only difference) ─────────────────────────────
 
-def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judge_mode=None,
-                  firstorder=False):
+def _nbq_cfg(skill_model, max_rounds=None, firstorder=False):
     cfg = infogain.eval_cfg(skill_model, pin=infogain.PIN_ALL)
     cfg["families"] = infogain.families_cfg(
         families_model=skill_model, firstorder=("on" if firstorder else "off"))
     if max_rounds:
         cfg["max_rounds"] = max_rounds
+    return cfg
+
+
+def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judge_mode=None,
+                  firstorder=False):
+    cfg = _nbq_cfg(skill_model, max_rounds=max_rounds, firstorder=firstorder)
     if auto_derive:
         cfg["auto_derive"] = "on"
     if judge_mode:
@@ -283,10 +288,7 @@ def questions_nbq(task, k, skill_model, auto_derive=False, max_rounds=None, judg
 
 def generate_shared_questions(task, k, skill_model, max_rounds=None):
     """Generate the single question set shared by every ablation arm for one task."""
-    cfg = infogain.eval_cfg(skill_model, pin=infogain.PIN_ALL)
-    cfg["families"] = infogain.families_cfg(families_model=skill_model, firstorder="off")
-    if max_rounds:
-        cfg["max_rounds"] = max_rounds
+    cfg = _nbq_cfg(skill_model, max_rounds=max_rounds)
     result = infogain.run(task["ambiguous_prompt"], cfg)
     topk = result["bucket"][:k]
     topk_questions = {rec["question"] for rec in topk}
@@ -331,6 +333,7 @@ def run_ablation_task(task, k, models, arms, max_rounds=None):
     rows = []
     for arm in arms:
         t0 = time.time()
+        usage_before = pipeline.get_usage()
         if arm == "baseline":
             injected_recs, qa = [], []
         elif arm == "assume":
@@ -343,6 +346,9 @@ def run_ablation_task(task, k, models, arms, max_rounds=None):
             injected_recs = shared["lowevsi"]
             qa = _oracle_qa(injected_recs, task["hidden_spec"], models["sim"])
         solved = solve_and_score(task, qa, models["solver"])
+        usage_after = pipeline.get_usage()
+        marginal = {field: usage_after[field] - usage_before[field]
+                    for field in ("calls", "input_tokens", "output_tokens", "model_seconds")}
         rows.append({
             "task": task["id"], "arm": arm, "k": k,
             "questions": [rec["question"] for rec in injected_recs], "qa": qa,
@@ -351,7 +357,7 @@ def run_ablation_task(task, k, models, arms, max_rounds=None):
             "frac": solved["frac"], "per_test": solved["per_test"], "code": solved["code"],
             "meta": {"q_values": [round(rec.get("value", 0.0), 3) for rec in injected_recs],
                      "evsis": [round(rec.get("evsi", 0.0), 3) for rec in injected_recs],
-                     "usage": shared["usage"],
+                     "usage": marginal,
                      "injected_values": [round(rec.get("value", 0.0), 3)
                                          for rec in injected_recs],
                      "injected_evsis": [round(rec.get("evsi", 0.0), 3)
@@ -359,16 +365,17 @@ def run_ablation_task(task, k, models, arms, max_rounds=None):
             "shared_topk": [rec["question"] for rec in shared["topk"]],
             "elapsed_s": round(time.time() - t0, 1),
         })
-    return rows
+    return rows, shared["usage"]
 
 
 def assert_paired_design(rows):
-    """Fail closed if a paired contrast did not use the claimed question sets."""
+    """Fail closed on mismatched non-error pairs; return skipped errored task ids."""
     by_task = {}
+    errored_tasks = set()
     for row in rows:
         if "error" in row:
-            raise ValueError(f"paired-design unavailable for task {row.get('task')!r} "
-                             f"arm {row.get('arm')!r}: {row['error']}")
+            errored_tasks.add(row.get("task"))
+            continue
         by_task.setdefault(row["task"], {})[row["arm"]] = row
     for task, arms in by_task.items():
         assume, answer = arms.get("assume"), arms.get("answer")
@@ -389,6 +396,7 @@ def assert_paired_design(rows):
             if (not isinstance(low_questions, list) or not isinstance(shared, list)
                     or set(low_questions) & set(shared)):
                 raise ValueError(f"paired-design mismatch for task {task!r}: low-EVSI overlaps top-K")
+    return sorted(errored_tasks)
 
 
 _NUMBERED = re.compile(r"^\s*\d+[.)]\s*(.+?)\s*$")
@@ -619,21 +627,26 @@ def main(argv=None):
 
     rows, t0 = [], time.time()
     paired_design = None
+    generation_usage = {}
     if args.paired_ablation:
         for task in tasks:
             print(f"… {task['id']} × paired-ablation", file=sys.stderr, flush=True)
             try:
-                rows.extend(run_ablation_task(task, args.k, models, args.arms, args.max_rounds))
+                task_rows, gen_usage = run_ablation_task(
+                    task, args.k, models, args.arms, args.max_rounds)
+                rows.extend(task_rows)
+                generation_usage[task["id"]] = gen_usage
             except Exception as e:
                 rows.extend({"task": task["id"], "arm": arm, "error": str(e)}
                             for arm in args.arms)
             if args.out:
                 with open(args.out, "w") as f:
                     json.dump({"rows": rows, "partial": True, "k": args.k,
-                               "models": models}, f, indent=1)
+                               "models": models, "ablation_schema": 2,
+                               "generation_usage": generation_usage}, f, indent=1)
         try:
-            assert_paired_design(rows)
-            paired_design = {"paired_design_valid": True}
+            errored = assert_paired_design(rows)
+            paired_design = {"paired_design_valid": True, "errored_tasks": errored}
         except ValueError as e:
             paired_design = {"paired_design_valid": False, "error": str(e)}
     else:
@@ -654,6 +667,7 @@ def main(argv=None):
                  "models": models, "elapsed_s": round(time.time() - t0, 1)}
         if paired_design is not None:
             saved.update(paired_design)
+            saved.update({"ablation_schema": 2, "generation_usage": generation_usage})
         with open(args.out, "w") as f:
             json.dump(saved, f, indent=1)
         print(f"saved {args.out}", file=sys.stderr)
