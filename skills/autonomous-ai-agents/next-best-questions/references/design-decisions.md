@@ -475,6 +475,35 @@ tests). Route: the relentless headroom diagnostic (does live relentless leave hi
 questions `via:"assumed"`?) — candidate 2 neither proven nor killed. Full numbers + verbatim rule:
 `evsi-validation-findings.md` §Answer-vs-assume paired ablation.
 
+### Retro reframe (post-hoc, iteration-four follow-up 2026-07-11 — hypothesis-generating, NO verdict change)
+
+A zero-cost retro probe of the durable gate JSON (no model calls) reframes what candidate 2's value
+actually is, and where to point iteration five. **The `answer` arm bundled two ingredients the verdict
+could not separate: EXPOSURE (the solver is told these specific things are unresolved) and CONTENT
+(the solver is handed the oracle's real answer).** Splitting the 34 tasks by whether the oracle
+revealed anything decomposes them: on the 20 tasks where the oracle revealed NOTHING, the answer arm
+injected pure refusals ("The spec doesn't say.") yet STILL beat baseline **+0.143** and beat `assume`
+**+0.077**; real oracle content on the revealed tasks lifted it only to +0.181. `assume` (nbq's own
+guessed modal default) is a wash vs baseline (+0.067) and agrees with the oracle ~1/19. **Learning:
+most of nbq's single-shot value here is EXPOSURE, not ANSWERS** — naming the right unknowns and
+forcing the solver to handle them explicitly captures most of the realized gain, and it needs no
+oracle. The content nbq can synthesize on its own (modal defaults) is near-worthless on this substrate.
+
+**Decision shift.** This is laps 1–3's intent≠state finding measured from the answering side and made
+positive: even when intent goes unanswered, surfacing it as an explicit unknown carries the benefit.
+Two consequences reshape the route: (a) candidate 2's cheap, high-leverage integration target is
+**nbq-as-unknown-surfacer** feeding the planner's open-questions list, not nbq-as-question-router
+waiting on an oracle; (b) the exposure hypothesis needs no oracle, so it is measurable on THIS harness
+despite the substrate's structural inability to score answer quality for intent questions. **Revised
+forward route (supersedes the bare "headroom diagnostic" above):** iteration five pre-registers a
+`questions-only` arm (inject top-K as explicit "UNKNOWN — handle sensibly", zero oracle calls) to test
+exposure head-on; the headroom diagnostic is reshaped to ask whether live relentless SURFACES
+high-EVSI unknowns to the planner (renders them as explicit open questions), not merely whether it
+marks them `via:"assumed"`. Caveats: post-hoc subgroup analysis conditioning on oracle behavior
+(selection effects), small n, many ties — it generates the lap-five hypothesis; the pre-registered
+`questions-only` arm is what can turn it into a verdict. Full synthesis:
+`evsi-validation-findings.md` §Retro addendum; queue in `nbq-improve/references/backlog.md`.
+
 ## Decided / deferred
 
 - **Decided, keep:** one layer of projected answers (no chain) · within-round semantic consolidation

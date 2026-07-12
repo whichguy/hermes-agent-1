@@ -890,6 +890,44 @@ pre-registered ATTRIBUTION_FAIL stands. Its role is to generate the iteration-fi
 a pre-registered `questions-only` arm (inject top-K questions as explicit "UNKNOWN — handle
 sensibly", zero oracle calls) testing whether exposure alone reproduces the answer arm's gain.
 
+**Thesis under test (recap, for a cold reader).** Candidate 2 is "route intent questions to whoever
+holds the intent." Iteration four's cheap premise-test asked the single-shot version: holding the
+question set fixed (ONE shared nbq generation per task), does giving the solver the ORACLE's real
+answer to nbq's top-K questions (`answer` arm) beat giving it nbq's own guessed default
+(`assume` arm)? The `answer-lowevsi` control — oracle-answer the low-value tail instead of the
+top-K — guarded the "any spec answer helps" tautology: if the tail helps as much as the top-K, the
+benefit is not attributable to nbq's *ranking*. That control fired (ATTRIBUTION_FAIL), because the
+strict spec-oracle refuses the intent questions nbq preferentially ranks (revealed 19% of top-K vs
+33% of the tail) — the substrate rewards spec-answerable trivia, not intent.
+
+**What the retro adds (the learning).** The `answer` arm actually bundles TWO ingredients, and the
+verdict couldn't separate them: (1) EXPOSURE — the solver is explicitly told these specific things
+are unresolved; (2) CONTENT — the solver is handed the oracle's actual answer. Conditioning on
+whether the oracle revealed anything decomposes them. On the 20 tasks where the oracle revealed
+NOTHING, the only ingredient present was exposure (the top-K surfaced as literal "The spec doesn't
+say." refusals) — and the arm STILL beat baseline +0.143 and beat `assume` +0.077. Adding real
+oracle content on the revealed tasks lifted it only to +0.181. So **most of nbq's single-shot value
+here is EXPOSURE, not ANSWERS**: turning implicit assumptions into explicit open questions the solver
+must consciously handle is itself worth most of the gain, and it needs no oracle. That `assume`
+(nbq's guessed modal default) is a wash vs baseline (+0.067) — and agrees with the oracle only ~1/19
+of the time — says the *content* nbq can synthesize on its own is near-worthless here; the lever that
+moves the outcome is naming the right unknowns.
+
+**Why this matters to the program (the throughline).** This is laps 1–3's intent≠state finding,
+now measured from the answering side and turned into a positive claim. Laps 1–3 established that
+nbq's high-EVSI questions encode *intent* (which reading, crash-vs-fallback, level of detail),
+unobservable by any state-hop and answerable only by the user — so answerability/reachability levers
+(#30 weighting, reach→investigate) are dead ends because the value lives in the unobservable. The
+retro sharpens that: even when intent goes UNanswered, surfacing it as an explicit unknown captures
+most of the realized benefit. Two consequences. (a) It re-frames candidate 2's integration target:
+the cheap, high-leverage move may be nbq-as-unknown-surfacer feeding the planner's open-questions
+list, not nbq-as-question-router waiting on an oracle. (b) It sidesteps the substrate's structural
+limit: a spec-oracle that refuses intent cannot score ANSWER quality, but the exposure hypothesis
+needs no oracle at all, so it is measurable on this very harness. Iteration five pre-registers the
+`questions-only` arm to test exposure head-on, and reshapes the headroom diagnostic to ask whether
+live relentless SURFACES high-EVSI unknowns to the planner (renders them as explicit open questions),
+not merely whether it silently marks them `via:"assumed"`.
+
 ## Caveats
 
 - 3 independent prompt clusters; n=51/n=17 overstate power. The +0.394 leans on gtm-plan (dropping it
